@@ -4,42 +4,51 @@ import time
 
 
 class TestQGISMeasureTool(QGISDogtailTest):
-    def setUp(self):
-        prj_mb = self.menubar.child(name='Project')
-        prj_mb.click()
-        open_recent = prj_mb.child(name='Open Recent', roleName='menu item')
-        menu = open_recent.child(roleName='popup menu')
-        menu.children()[0].click()  # 点击最近打开的项目
-        self.logger.info("打开最近的项目")
-        time.sleep(3)  # 等待项目加载完成
-        self.logger.info("项目已打开，准备进行测量工具测试")
+    # def setUp(self):
+    #     prj_mb = self.menubar.child(name='Project')
+    #     prj_mb.click()
+    #     open_recent = prj_mb.child(name='Open Recent', roleName='menu item')
+    #     menu = open_recent.child(roleName='popup menu')
+    #     menu.children()[0].click()  # 点击最近打开的项目
+    #     self.logger.info("打开最近的项目")
+    #     time.sleep(3)  # 等待项目加载完成
+    #     self.logger.info("项目已打开，准备进行测量工具测试")
 
     def test_measure_tool(self):
         # 打开测量工具
-        tools = self.app.child(name='Attributes Toolbar', roleName='tool bar')
-        measure_tools = tools.child(name='Measure Line', roleName='menu item')  # 以测量线为例，可根据需求换测量面等
+        tools = self.qgis.child(name='Attributes Toolbar', roleName='tool bar')
+        measure_tools = tools.child(name='Measure Line', roleName='check box')  # 以测量线为例，可根据需求换测量面等
         measure_tools.click()
         self.logger.info("测量工具已打开")
 
         # 获取地图视图区域
-        map_view = self.qgis.child(roleName="frame")
+        prj_view = self.qgis.child(roleName="frame")
+        map_view = prj_view.child(roleName="layered pane")
         self.move_to_element_center(map_view)
+        self.click()
 
         # 模拟在地图上点击测量起点和终点（示例点击两次，可根据实际测量需求调整点击次数和位置）
+        self.move_to_relative_position(map_view, 100, -50)  # 点击地图中心点作为起点
         self.click()
-        time.sleep(1)
+        time.sleep(0.5)
+        self.move_to_relative_position(map_view, 50, 100)
         self.click()
+        time.sleep(0.5)
+        self.move_to_relative_position(map_view, -50, -50)
+        self.right_click()
         self.logger.info("已模拟在地图上点击测量点")
 
-        # 查看测量结果（假设测量结果会显示在底部状态栏或专门的测量结果窗口，需根据实际 UI 调整获取逻辑）
-        # 以下示例为假设从状态栏获取简单文本结果，实际可能需要更复杂的元素定位
-        status_bar = self.qgis.child(roleName='status bar')
-        measure_result = status_bar.child(roleName='label').name
-        self.logger.info(f"测量结果：{measure_result}")
+        # 查看测量结果
+        measure_dialog = self.qgis.child(name='Measure', roleName='dialog')
+        result_unit = measure_dialog.child(roleName='combo box')
+        self.select_combo_item(result_unit, 'kilometers', 'list item')
+        # self.logger.info(f"测量结果：{measure_result}")
+        measure_dialog.child(name='Copy All', roleName='push button').click()  # 假设有复制全部结果按钮
+        self.logger.info("测量结果已复制到剪贴板")
+        measure_dialog.child(name='Close', roleName='push button').click()
 
-        # 关闭测量工具（通常在工具菜单或工具条上有关闭选项，需根据实际 UI 调整）
-        measure_tool_close = self.qgis.child(name='Measure Line', roleName='toggle button')  # 假设是 toggle 按钮，点击关闭
-        measure_tool_close.click()
+        # 关闭测量工具
+        self.qgis.child(name='Map Navigation Toolbar', roleName='tool bar').child(name='Pan Map', roleName='check box').click()  # 切换回平移模式
         self.logger.info("测量工具已关闭")
 
 

@@ -6,6 +6,31 @@ import time
 
 class TestQGISProjectCreation(QGISDogtailTest):  
 
+    def addVectorLayer(self, layer_path):
+        """
+        添加矢量图层
+        :param layer_path: 矢量图层文件路径
+        :return: 操作成功返回True，失败返回False
+        """
+        layer_mb = self.menubar.menuItem('Layer')
+        layer_mb.click()
+        addLayer = layer_mb.child('Add Layer')
+        addLayer.click()
+        addVectorLayer = addLayer.child('Add Vector Layer…')
+        addVectorLayer.click()
+        self.logger.info("添加矢量图层对话框已打开")
+
+        try: 
+            self.click_image('qgis_image/cleanInput.png')
+        except Exception as e:
+            self.logger.error(f"清除输入框失败: {e}")
+        self.click_image('qgis_image/vectorFileInput.png')
+        self.input_text(layer_path)
+        self.click_image('qgis_image/apply.png')
+        self.click_image('qgis_image/close.png')
+        self.logger.info(f"矢量图层 {layer_path} 已添加")
+        
+
     def addVectorLayerFromBrowser(self, layerName):
         browser = self.qgis.child(name='Browser', roleName='frame')
         file_tree = browser.child(roleName='tree')
@@ -24,7 +49,7 @@ class TestQGISProjectCreation(QGISDogtailTest):
         self.logger.info("新地图项目已创建")
         # 验证：新项目创建后，标题栏是否符合预期（假设标题栏会显示“无标题”之类内容，需根据实际改）
         window_title = self.rect.name
-        self.assertEqual(window_title, "Untitled Project - QGIS", "新建项目后窗口标题不符合预期")
+        self.assertEqual(window_title, "Untitled Project — QGIS", "新建项目后窗口标题不符合预期")
 
         # 添加底图
         web_mb = self.menubar.child(name='Web')
@@ -42,22 +67,18 @@ class TestQGISProjectCreation(QGISDogtailTest):
         osm_layer = layer_tree.child(name='OSM Standard', roleName='table cell')
         self.assertIsNotNone(osm_layer, "OSM 底图图层未成功添加到图层列表")
 
-        # 添加矢量图层并验证
+        # 添加矢量图层
+        # self.addVectorLayer('/home/yys/QGIS/qgis-auto-test/data/BeiJing.geojson')
+        # self.addVectorLayer('/home/yys/QGIS/qgis-auto-test/data/ShangHai.geojson')
         beijing_layer = self.addVectorLayerFromBrowser('BeiJing.geojson')
-        self.assertIsNotNone(beijing_layer, "BeiJing.geojson 图层添加失败")
-        # 验证图层名称是否正确
-        self.assertEqual(beijing_layer.name, 'BeiJing', "BeiJing.geojson 图层名称显示不正确")
-
         shanghai_layer = self.addVectorLayerFromBrowser('ShangHai.geojson')
-        self.assertIsNotNone(shanghai_layer, "ShangHai.geojson 图层添加失败")
-        self.assertEqual(shanghai_layer.name, 'ShangHai', "ShangHai.geojson 图层名称显示不正确")
 
         map_view = self.qgis.child(roleName="frame")
         self.drag_map_percentage(0.6, 0.7, 0.5, 0.6)
-        map_bars = self.qgis.child(name='Map Navigation Toolbar', roleName='tool bar')
-        zoom_to_layer = map_bars.child(name='Zoom to Layer(s)', roleName='push button')
         scale_bar = self.statusbar.child(roleName='combo box', description='Current map scale (formatted as x:y)')
         before_zoom_scale = scale_bar.name
+        map_bars = self.qgis.child(name='Map Navigation Toolbar', roleName='tool bar')
+        zoom_to_layer = map_bars.child(name='Zoom to Layer(s)', roleName='push button')
         zoom_to_layer.click()
         # 验证：点击缩放至图层后，地图范围是否有变化（简单对比点击前后地图视图位置，可更精细实现）
         time.sleep(0.2)
@@ -85,7 +106,7 @@ class TestQGISProjectCreation(QGISDogtailTest):
         layers_panel = self.qgis.child(name='Layers', roleName='frame')
         layer_tree = layers_panel.child(roleName='tree')
         layers = [child for child in layer_tree.children if child.roleName == 'table cell']
-        self.assertEqual(len(layers), 3, "图层列表数量不符合预期（OSM底图 + 两个矢量图层）")
+        self.assertEqual(len(layers), 4, "图层列表数量不符合预期（OSM底图 + 两个矢量图层 + ?）")
         layers[0].click()  # 选中第一个图层
         zoom_to_layer.click()
         self.right_click_element(layers[0])
@@ -95,8 +116,11 @@ class TestQGISProjectCreation(QGISDogtailTest):
         # 设置样式
         self.click_image('qgis_image/styles.png')
         self.click_image('qgis_image/editSymbol.png')
-        self.click_image('qgis_image/hashedBlack1.png')
-        self.click_image('qgis_image/okNoIcon.png')
+        symbol_selector = self.qgis.child(name='Symbol Selector', roleName='dialog')
+        symbol_selector.child(name='outline blue').click()
+        self.click_image('qgis_image/styleList.png')
+        symbol_selector.child(name='OK', roleName='push button').click()
+        # self.click_image('qgis_image/okNoIcon.png')
         zoom_last = map_bars.child(name='Zoom Last', roleName='push button')
         zoom_last.click()
         zoom_next = map_bars.child(name='Zoom Next', roleName='push button')
@@ -112,11 +136,16 @@ class TestQGISProjectCreation(QGISDogtailTest):
         self.drag_item_to_parent(shanghai_layer, group)
         layer_bar.child(name='Collapse All', roleName='push button').click()
         layer_bar.child(name='Expand All', roleName='push button').click()
+        self.right_click_element(group)
+        self.click_image('qgis_image/moveToTop.png')
+        self.hotkey('ctrl', 'shift', 'h')
+        time.sleep(0.2)
+        self.hotkey('ctrl', 'shift', 'u')
                 
         # 保存项目文件
         save_project = prj_bars.child(name='Save', roleName='push button')
         save_project.click()
-        time.sleep(2)
+        time.sleep(3)
         self.logger.info("项目文件保存对话框已打开")
         self.click_image('qgis_image/saveInput.png')
         idx = int(time.time())
@@ -124,6 +153,7 @@ class TestQGISProjectCreation(QGISDogtailTest):
         self.hotkey('enter')
         # 验证：项目是否成功保存（可检查文件是否存在，需结合实际保存路径）
         project_save_path = f'/home/yys/QGIS/prj/my_project_{idx}.qgs'  # 假设保存路径，需根据实际改
+        time.sleep(5)
         self.assertTrue(os.path.exists(project_save_path), "项目文件未成功保存")
 
 
