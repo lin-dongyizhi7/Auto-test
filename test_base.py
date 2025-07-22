@@ -22,6 +22,8 @@ class QGISDogtailTest(unittest.TestCase):
         # self.dialog_app = root.application('qgis')
         self.logger.info("QGIS应用已启动")
         self.menubar = self.qgis.child(roleName='menu bar')
+        self.statusbar = self.qgis.child(roleName='status bar')
+        self.rect = self.qgis.child(roleName="frame")
         
         # 等待主界面加载完成
         time.sleep(3)
@@ -65,7 +67,6 @@ class QGISDogtailTest(unittest.TestCase):
         x, y = element.position
         pyautogui.moveTo(x, y)
         self.logger.info(f"鼠标移动到元素: {element.name} ({element.x}, {element.y})")
-        time.sleep(0.5)
 
     def click_element(self, element, roleName=None):
         """
@@ -77,7 +78,7 @@ class QGISDogtailTest(unittest.TestCase):
         # self.move_to_element(element)
         element.click()
         self.logger.info(f"点击元素: {element.name}")
-        time.sleep(0.5)
+        time.sleep(0.2)
         return True
     
     def right_click_element(self, element, roleName=None):
@@ -89,7 +90,7 @@ class QGISDogtailTest(unittest.TestCase):
         """
         element.click(button=3)
         self.logger.info(f"右键点击元素: {element.name}")
-        time.sleep(0.5)
+        time.sleep(0.2)
         return True
     
     def set_text(self, element, text, roleName=None):
@@ -102,7 +103,7 @@ class QGISDogtailTest(unittest.TestCase):
         """
         element.text = text
         self.logger.info(f"设置文本: {text} 到 {element.name}")
-        time.sleep(0.5)
+        time.sleep(0.2)
         return True
     
     def select_combo_item(self, combo, item_text, roleName=None):
@@ -118,7 +119,7 @@ class QGISDogtailTest(unittest.TestCase):
         if item:
             item.click()
             self.logger.info(f"选择下拉框选项: {item_text}")
-            time.sleep(0.5)
+            time.sleep(0.2)
             return True
     
     def wait_for_element(self, path, roleName=None, timeout=10):
@@ -138,55 +139,102 @@ class QGISDogtailTest(unittest.TestCase):
         return False
     
     # 备用的pyautogui图像识别方法
-    def click_image(self, image_path, confidence=0.7, timeout=5):
+    def find_image(self, image_path, region=None, confidence=0.7, timeout=5):
         """
-        使用pyautogui识别并点击图像
+        使用pyautogui识别图像
         :param image_path: 图像路径
         :param confidence: 识别置信度
         :param timeout: 超时时间（秒）
-        :return: 点击成功返回True，失败返回False
+        :return: 找到图像返回位置元组 (x, y)，未找到返回None
         """
         start_time = time.time()
         while time.time() - start_time < timeout:
-            pos = pyautogui.locateOnScreen(image_path, confidence=confidence)
+            pos = pyautogui.locateOnScreen(image_path, region=region, confidence=confidence)
             if pos:
-                x, y = pyautogui.center(pos)
-                pyautogui.moveTo(x, y)
-                pyautogui.click(x, y)
-                self.logger.info(f"图像识别点击: {image_path}")
-                time.sleep(0.5)
-                return True
-            time.sleep(0.5)
+                return pyautogui.center(pos)
+            time.sleep(0.2)
+        return None
+    
+    def find_image_in_percentage_region(self, image_path, percentage_region, confidence=0.7, timeout=5):
+        """
+        在指定百分比区域内查找图像
+        :param image_path: 图像路径
+        :param percentage_region: 百分比区域，格式为 (start_x_pct, start_y_pct, end_x_pct, end_y_pct)
+        :param confidence: 识别置信度
+        :param timeout: 超时时间（秒）
+        :return: 找到图像返回位置元组 (x, y)，未找到返回None
+        """
+        x, y = self.rect.position
+        width, height = self.rect.size
+        start_x = x + int(width * percentage_region[0])
+        start_y = y + int(height * percentage_region[1])
+        end_x = x + int(width * percentage_region[2])
+        end_y = y + int(height * percentage_region[3])
+        region = (start_x, start_y, end_x - start_x, end_y - start_y)
         
+        return self.find_image(image_path, region=region, confidence=confidence, timeout=timeout)
+
+    def click_image(self, image_path, confidence=0.7, timeout=5):
+        """
+        使用 pyautogui 识别并点击图像，复用 find_image
+        :param image_path: 图像路径
+        :param confidence: 识别置信度
+        :param timeout: 超时时间（秒）
+        :return: 点击成功返回 True，失败返回 False
+        """
+        pos = self.find_image(image_path, confidence=confidence, timeout=timeout)
+        if pos:
+            pyautogui.click(pos[0], pos[1])
+            self.logger.info(f"图像识别点击: {image_path}")
+            time.sleep(0.2)
+            return True
+        # 针对特定图片的特殊处理，可扩展更多条件
         if image_path == 'qgis_image/cleanInput.png':
-            self.logger.info('现在不需要清空输入框')
+            self.logger.info('现在不需要清空输入框，跳过点击')
             return True
         self.logger.warning(f"图像识别失败: {image_path}")
         return False
-    
+
     def double_click_image(self, image_path, confidence=0.7, timeout=5):
         """
-        使用pyautogui识别并双击图像
+        使用 pyautogui 识别并双击图像，复用 find_image
         :param image_path: 图像路径
         :param confidence: 识别置信度
         :param timeout: 超时时间（秒）
-        :return: 双击成功返回True，失败返回False
+        :return: 双击成功返回 True，失败返回 False
         """
-        start_time = time.time()
-        while time.time() - start_time < timeout:
-            pos = pyautogui.locateOnScreen(image_path, confidence=confidence)
-            if pos:
-                x, y = pyautogui.center(pos)
-                pyautogui.moveTo(x, y)
-                pyautogui.doubleClick(x, y)
-                self.logger.info(f"图像识别双击: {image_path}")
-                time.sleep(0.5)
-                return True
-            time.sleep(0.5)
-        
+        pos = self.find_image(image_path, confidence=confidence, timeout=timeout)
+        if pos:
+            pyautogui.doubleClick(pos[0], pos[1])
+            self.logger.info(f"图像识别双击: {image_path}")
+            time.sleep(0.2)
+            return True
         self.logger.warning(f"图像识别双击失败: {image_path}")
         return False
-    
+
+    def click_image_in_percentage_region(self, image_path, percentage_region, confidence=0.7, timeout=5):
+        """
+        在指定百分比区域内点击图像，复用 find_image_in_percentage_region
+        :param image_path: 图像路径
+        :param percentage_region: 百分比区域，格式为 (start_x_pct, start_y_pct, end_x_pct, end_y_pct)
+        :param confidence: 识别置信度
+        :param timeout: 超时时间（秒）
+        :return: 点击成功返回 True，失败返回 False
+        """
+        pos = self.find_image_in_percentage_region(
+            image_path, 
+            percentage_region, 
+            confidence=confidence, 
+            timeout=timeout
+        )
+        if pos:
+            pyautogui.click(pos[0], pos[1])
+            self.logger.info(f"在百分比区域内点击图像: {image_path}")
+            time.sleep(0.2)
+            return True
+        self.logger.warning(f"在百分比区域内点击图像失败: {image_path}")
+        return False
+
     def input_text(self, text, element=None):
         """
         输入文本到元素
@@ -200,7 +248,7 @@ class QGISDogtailTest(unittest.TestCase):
             self.logger.info(f"输入文本: {text} 到 {element.name}")
         else:
             pyautogui.typewrite(text)
-        time.sleep(0.5)
+        time.sleep(0.2)
         return True
     
     def move_to_window_center(self):
@@ -208,14 +256,13 @@ class QGISDogtailTest(unittest.TestCase):
         将鼠标移动到QGIS窗口中心
         :return: None
         """
-        rect = self.qgis.child(roleName="frame")
-        x, y = rect.position
-        width, height = rect.size
+        x, y = self.rect.position
+        width, height = self.rect.size
         center_x = x + width // 2
         center_y = y + height // 2
         pyautogui.moveTo(center_x, center_y)
         self.logger.info(f"鼠标移动到窗口中心: ({center_x}, {center_y})")
-        time.sleep(0.5)
+        time.sleep(0.2)
 
     def move_to_element_center(self, element):
         """
@@ -229,13 +276,13 @@ class QGISDogtailTest(unittest.TestCase):
         center_y = y + height // 2
         pyautogui.moveTo(center_x, center_y)
         self.logger.info(f"鼠标移动到元素中心: ({center_x}, {center_y})")
-        time.sleep(0.5)
+        time.sleep(0.2)
 
     def hotkey(self, *keys):
         """组合键操作，例如 Ctrl+C"""
         pyautogui.hotkey(*keys)
         self.logger.info(f"按下组合键: {' + '.join(keys)}")
-        time.sleep(0.5)
+        time.sleep(0.2)
 
     def scroll(self, clicks):
         """
@@ -245,7 +292,7 @@ class QGISDogtailTest(unittest.TestCase):
         """
         pyautogui.scroll(clicks)
         self.logger.info(f"鼠标滚动: {clicks} 次")
-        time.sleep(0.5)
+        time.sleep(0.2)
 
     def trans_tuple_to_loc(self, tup):
         return {
@@ -265,7 +312,7 @@ class QGISDogtailTest(unittest.TestCase):
         pyautogui.moveTo(start_x, start_y)
         pyautogui.dragTo(end_x, end_y, duration=0.5)
         self.logger.info(f"从 ({start_x}, {start_y}) 拖动到 ({end_x}, {end_y})")
-        time.sleep(0.5)
+        time.sleep(0.2)
 
     def drag_map_percentage(self, start_x_pct, start_y_pct, end_x_pct, end_y_pct):
         """
