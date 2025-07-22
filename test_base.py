@@ -27,9 +27,11 @@ class QGISDogtailTest(unittest.TestCase):
         
         # 等待主界面加载完成
         time.sleep(3)
+
     
     def tearDown(self):
         self.logger.info("测试完成")
+
     
     def find_element(self, path, roleName=None, recursive=True):
         """
@@ -55,21 +57,17 @@ class QGISDogtailTest(unittest.TestCase):
         
         return current
     
+    
     def click(self, x=None, y=None):
-        pyautogui.click(x,y)
+        if x and y:
+            pyautogui.click(x,y)
+        else:
+            pyautogui.click()
+
 
     def right_click(self):
         pyautogui.click(button='right')
 
-    def move_to_element(self, element):
-        """
-        将鼠标移动到指定元素
-        :param element: 元素对象
-        :return: None
-        """
-        x, y = element.position
-        pyautogui.moveTo(x, y)
-        self.logger.info(f"鼠标移动到元素: {element.name} ({element.x}, {element.y})")
 
     def click_element(self, element, roleName=None):
         """
@@ -78,11 +76,12 @@ class QGISDogtailTest(unittest.TestCase):
         :param roleName: 元素角色名（可选）
         :return: 操作成功返回True，失败返回False
         """
-        # self.move_to_element(element)
+        self.move_to_element_center(element)
         element.click()
         self.logger.info(f"点击元素: {element.name}")
         time.sleep(0.2)
         return True
+    
     
     def right_click_element(self, element, roleName=None):
         """
@@ -96,6 +95,7 @@ class QGISDogtailTest(unittest.TestCase):
         time.sleep(0.2)
         return True
     
+    
     def set_text(self, element, text, roleName=None):
         """
         设置元素文本
@@ -108,6 +108,7 @@ class QGISDogtailTest(unittest.TestCase):
         self.logger.info(f"设置文本: {text} 到 {element.name}")
         time.sleep(0.2)
         return True
+    
     
     def select_combo_item(self, combo, item_text, roleName=None):
         """
@@ -124,6 +125,24 @@ class QGISDogtailTest(unittest.TestCase):
             self.logger.info(f"选择下拉框选项: {item_text}")
             time.sleep(0.2)
             return True
+            
+
+    def input_text(self, text, element=None):
+        """
+        输入文本到元素
+        :param element: 输入框元素
+        :param text: 要输入的文本
+        :return: 操作成功返回True，失败返回False
+        """
+        if element:
+            element.click()
+            pyautogui.typewrite(text)
+            self.logger.info(f"输入文本: {text} 到 {element.name}")
+        else:
+            pyautogui.typewrite(text)
+        time.sleep(0.2)
+        return True
+    
     
     def wait_for_element(self, path, roleName=None, timeout=10):
         """
@@ -141,6 +160,7 @@ class QGISDogtailTest(unittest.TestCase):
             time.sleep(1)
         return False
     
+    
     # 备用的pyautogui图像识别方法
     def find_image(self, image_path, region=None, confidence=0.7, timeout=5):
         """
@@ -157,6 +177,7 @@ class QGISDogtailTest(unittest.TestCase):
                 return pyautogui.center(pos)
             time.sleep(0.2)
         return None
+    
     
     def find_image_in_percentage_region(self, image_path, percentage_region, confidence=0.7, timeout=5):
         """
@@ -176,6 +197,7 @@ class QGISDogtailTest(unittest.TestCase):
         region = (start_x, start_y, end_x - start_x, end_y - start_y)
         
         return self.find_image(image_path, region=region, confidence=confidence, timeout=timeout)
+    
 
     def click_image(self, image_path, confidence=0.7, timeout=5):
         """
@@ -197,6 +219,7 @@ class QGISDogtailTest(unittest.TestCase):
             return True
         self.logger.warning(f"图像识别失败: {image_path}")
         return False
+    
 
     def double_click_image(self, image_path, confidence=0.7, timeout=5):
         """
@@ -214,6 +237,7 @@ class QGISDogtailTest(unittest.TestCase):
             return True
         self.logger.warning(f"图像识别双击失败: {image_path}")
         return False
+    
 
     def click_image_in_percentage_region(self, image_path, percentage_region, confidence=0.7, timeout=5):
         """
@@ -237,23 +261,9 @@ class QGISDogtailTest(unittest.TestCase):
             return True
         self.logger.warning(f"在百分比区域内点击图像失败: {image_path}")
         return False
-
-    def input_text(self, text, element=None):
-        """
-        输入文本到元素
-        :param element: 输入框元素
-        :param text: 要输入的文本
-        :return: 操作成功返回True，失败返回False
-        """
-        if element:
-            element.click()
-            pyautogui.typewrite(text)
-            self.logger.info(f"输入文本: {text} 到 {element.name}")
-        else:
-            pyautogui.typewrite(text)
-        time.sleep(0.2)
-        return True
     
+    
+    # 鼠标移动相关方法
     def move_to_window_center(self):
         """
         将鼠标移动到QGIS窗口中心
@@ -266,6 +276,18 @@ class QGISDogtailTest(unittest.TestCase):
         pyautogui.moveTo(center_x, center_y)
         self.logger.info(f"鼠标移动到窗口中心: ({center_x}, {center_y})")
         time.sleep(0.2)
+
+
+    def move_to_element(self, element):
+        """
+        将鼠标移动到指定元素
+        :param element: 元素对象
+        :return: None
+        """
+        x, y = element.position
+        pyautogui.moveTo(x, y)
+        self.logger.info(f"鼠标移动到元素: {element.name} ({element.x}, {element.y})")
+
 
     def move_to_element_center(self, element):
         """
@@ -280,6 +302,7 @@ class QGISDogtailTest(unittest.TestCase):
         pyautogui.moveTo(center_x, center_y)
         self.logger.info(f"鼠标移动到元素中心: ({center_x}, {center_y})")
         time.sleep(0.2)
+        
 
     def move_to_relative_position(self, element, offset_x, offset_y):
         """
@@ -294,28 +317,15 @@ class QGISDogtailTest(unittest.TestCase):
         self.logger.info(f"鼠标移动到元素相对位置: ({x + offset_x}, {y + offset_y})")
         time.sleep(0.2)
 
-    def hotkey(self, *keys):
-        """组合键操作，例如 Ctrl+C"""
-        pyautogui.hotkey(*keys)
-        self.logger.info(f"按下组合键: {' + '.join(keys)}")
-        time.sleep(0.2)
-
-    def scroll(self, clicks):
-        """
-        滚动鼠标
-        :param clicks: 滚动次数，正数向上滚动，负数向下滚动
-        :return: None
-        """
-        pyautogui.scroll(clicks)
-        self.logger.info(f"鼠标滚动: {clicks} 次")
-        time.sleep(0.2)
 
     def trans_tuple_to_loc(self, tup):
         return {
             'x': tup[0],
             'y': tup[1]
         }
+    
 
+    # 拖拽方法
     def drag_to(self, start_x, start_y, end_x, end_y):
         """
         拖动地图
@@ -329,6 +339,7 @@ class QGISDogtailTest(unittest.TestCase):
         pyautogui.dragTo(end_x, end_y, duration=0.5)
         self.logger.info(f"从 ({start_x}, {start_y}) 拖动到 ({end_x}, {end_y})")
         time.sleep(0.2)
+
 
     def drag_map_percentage(self, start_x_pct, start_y_pct, end_x_pct, end_y_pct):
         """
@@ -349,6 +360,7 @@ class QGISDogtailTest(unittest.TestCase):
         
         self.drag_to(start_x, start_y, end_x, end_y)
 
+
     def drag_item_to_parent(self, item, parent):
         """
         拖动元素到其父元素
@@ -367,6 +379,7 @@ class QGISDogtailTest(unittest.TestCase):
         self.drag_to(item_x, item_y, end_x, end_y)
         self.logger.info(f"将 {item.name} 拖动到 {parent.name} 中心")
 
+
     def drag_item_to_cousin(self, item, cousin):
         """
         拖动元素到其兄弟元素
@@ -383,3 +396,22 @@ class QGISDogtailTest(unittest.TestCase):
         
         self.drag_to(item_x, item_y, end_x, end_y)
         self.logger.info(f"将 {item.name} 拖动到 {cousin.name} 下方")
+
+
+    def hotkey(self, *keys):
+        """组合键操作，例如 Ctrl+C"""
+        pyautogui.hotkey(*keys)
+        self.logger.info(f"按下组合键: {' + '.join(keys)}")
+        time.sleep(0.2)
+
+
+    def scroll(self, clicks):
+        """
+        滚动鼠标
+        :param clicks: 滚动次数，正数向上滚动，负数向下滚动
+        :return: None
+        """
+        pyautogui.scroll(clicks)
+        self.logger.info(f"鼠标滚动: {clicks} 次")
+        time.sleep(0.2)
+
