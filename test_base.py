@@ -55,8 +55,11 @@ class QGISDogtailTest(unittest.TestCase):
         
         return current
     
-    def click(self):
-        pyautogui.click()
+    def click(self, x=None, y=None):
+        pyautogui.click(x,y)
+
+    def right_click(self):
+        pyautogui.click(button='right')
 
     def move_to_element(self, element):
         """
@@ -115,7 +118,7 @@ class QGISDogtailTest(unittest.TestCase):
         :return: 操作成功返回True，失败返回False
         """
         combo.click()
-        item = combo.child(name=item_text, roleName='menu item')
+        item = combo.child(name=item_text, roleName=roleName)
         if item:
             item.click()
             self.logger.info(f"选择下拉框选项: {item_text}")
@@ -276,6 +279,19 @@ class QGISDogtailTest(unittest.TestCase):
         center_y = y + height // 2
         pyautogui.moveTo(center_x, center_y)
         self.logger.info(f"鼠标移动到元素中心: ({center_x}, {center_y})")
+        time.sleep(0.2)
+
+    def move_to_relative_position(self, element, offset_x, offset_y):
+        """
+        将鼠标移动到指定元素的相对位置
+        :param element: 元素对象
+        :param offset_x: 相对X偏移量
+        :param offset_y: 相对Y偏移量
+        :return: None
+        """
+        x, y = element.position
+        pyautogui.moveTo(x + offset_x, y + offset_y)
+        self.logger.info(f"鼠标移动到元素相对位置: ({x + offset_x}, {y + offset_y})")
         time.sleep(0.2)
 
     def hotkey(self, *keys):
