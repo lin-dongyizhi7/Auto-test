@@ -318,6 +318,27 @@ class Operation:
         self.finish_current_opts(commands)  # 完成当前操作指令集的执行
 
 
+    def move_to(self, x: int, y: int) -> Dict:
+        """
+        生成鼠标移动到指定位置的指令
+        :param x: X坐标
+        :param y: Y坐标
+        """
+        commands = [ self._generate_command("mouse_move", {"x": x, "y": y}) ]
+        self.finish_current_opts(commands)
+
+
+    def move_to_element_center(self, element_path: str, role_name: Optional[str] = None) -> Dict:
+        """
+        生成鼠标移动到元素中心的指令
+        :param element_path: 元素路径
+        :param role_name: 元素角色名（可选）
+        """
+        loc = self.get_location(element_path, role_name)
+        commands = [ self._generate_command("mouse_move", {"x": loc["center_x"], "y": loc["center_y"]}) ]
+        self.finish_current_opts(commands)
+
+
     def export_to_json(self, file_path: str) -> None:
         """
         将.commands_list导出为JSON文件

@@ -34,25 +34,46 @@ class TestedMachineCommunicator:
         # 这里使用dogtail的tree模块来查找元素
         try:
             # # 若未指定应用，使用系统根窗口（所有应用）
-            # if not self.app:
-            #     self.app = dogtail.tree.root
+            if not self.app:
+                self.app = dogtail.tree.root
 
-            # # 按路径逐级查找元素
-            # current_element = self.app
-            # for part in element_path.split('/'):
-            #     # 查找子元素（忽略空路径部分）
-            #     if part.strip():
-            #         current_element = current_element.child(name=part, roleName=role_name)
-            #         if not current_element:
-            #             return {"success": False, "error": f"元素不存在: {part}"}
+            # 拆分路径为各级元素名称
+            path_parts = [part.strip() for part in element_path.split('/') if part.strip()]
+            if not path_parts:
+                return {"success": False, "error": "元素路径不能为空"}
+
+            current_element = self.app
+            # 遍历除最后一级外的所有路径
+            for part in path_parts[:-1]:
+                # 中间层级不使用role_name过滤
+                current_element = current_element.child(name=part)
+                if not current_element:
+                    return {
+                        "success": False, 
+                        "error": 
+                            f"中间元素不存在: {part} (路径: {'/'.join(path_parts[:path_parts.index(part)+1])})"
+                    }
+
+            # 处理最后一级元素，此时应用role_name（如果提供）
+            last_part = path_parts[-1]
+            if role_name:
+                target_element = current_element.child(name=last_part, roleName=role_name)
+            else:
+                target_element = current_element.child(name=last_part)
+
+            if not target_element:
+                error_msg = f"最后一级元素不存在: {last_part}"
+                if role_name:
+                    error_msg += f" (角色: {role_name})"
+                return {"success": False, "error": error_msg}
 
             # 提取元素信息（位置、尺寸、中心坐标等）
-            # x, y = current_element.position
-            # width, height = current_element.size
-            x = random.randint(1, 1200)
-            y = random.randint(1, 800)
-            width = random.randint(100, 800)
-            height = random.randint(100, 600)
+            x, y = current_element.position
+            width, height = current_element.size
+            # x = random.randint(1, 1200)
+            # y = random.randint(1, 800)
+            # width = random.randint(100, 800)
+            # height = random.randint(100, 600)
             return {
                 "success": True,
                 "data": {
@@ -206,8 +227,9 @@ if __name__ == "__main__":
     communicator = TestedMachineCommunicator(bind_port=8888)
     try:
         # 可指定被测应用名称，如 communicator.start(app_name="gedit")
-        # communicator.start(app_name="QGIS3")  # 启动QGIS应用的测试服务
-        communicator.start()
+        communicator.start(app_name="QGIS3")  # 启动QGIS应用的测试服务
+        # communicator.startt(app_name="calculator")  # 启动计算器应用的测试服务
+        # communicator.start()
     except KeyboardInterrupt:
         # 按Ctrl+C停止服务
         communicator.stop()
