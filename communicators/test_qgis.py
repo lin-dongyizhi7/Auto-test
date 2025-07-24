@@ -14,6 +14,6 @@ if __name__ == "__main__":
 
     op.click_element(element_path="Web/QuickMapServices/OSM/OSM Standard", role_name_list=["menu item", "menu item", "menu item", "menu item"])
 
-    op.drag_to_percentage("QGIS3", 0.6, 0.7, 0.5, 0.6)
+    # op.drag_to_percentage("QGIS3", 0.6, 0.7, 0.5, 0.6)
 
     op.click_element(element_path="Map Navigation Toolbar/Zoom to Layer(s)", role_name_list=["tool bar", "push button"])
