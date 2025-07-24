@@ -1,6 +1,7 @@
 import os
 from test_base import QGISDogtailTest
 import unittest
+from dogtail.rawinput import click, press, release, absoluteMotion
 import time
 
 
@@ -54,13 +55,29 @@ class TestQGISProjectCreation(QGISDogtailTest):
 
         # 添加底图
         web_mb = self.menubar.child(name='Web')
-        web_mb.click()
+        # web_mb.click()
+        x, y = web_mb.position
+        width, height = web_mb.size
+        absoluteMotion(x + width / 2, y + height / 2)
+        click(x=x + width / 2, y=y + height / 2, button='left')
         QMS = web_mb.child(name='QuickMapServices')
-        QMS.click()
+        # QMS.click()
+        x, y = QMS.position
+        width, height = QMS.size
+        absoluteMotion(x + width / 2, y + height / 2)
+        click(x=x + width / 2, y=y + height / 2, button='left')
         OSM = QMS.child(name='OSM')
-        OSM.click()
+        # OSM.click()
+        x, y = OSM.position
+        width, height = OSM.size
+        absoluteMotion(x + width / 2, y + height / 2)
+        click(x=x + width / 2, y=y + height / 2, button='left')
         OSM_standard = OSM.child(name='OSM Standard')
-        OSM_standard.click()
+        # OSM_standard.click()
+        x, y = OSM_standard.position
+        width, height = web_mb.size
+        absoluteMotion(x + width / 2, y + height / 2)
+        click(x=x + width / 2, y=y + height / 2, button='left')
         self.logger.info("OSM底图添加成功")
         # 验证：底图图层是否添加到图层列表
         layers_panel = self.qgis.child(name='Layers', roleName='frame')

@@ -78,6 +78,7 @@ class TestedMachineCommunicator:
             # 提取元素信息（位置、尺寸、中心坐标等）
             x, y = current_element.position
             width, height = current_element.size
+            print(f"找到元素: {current_element.name}, 位置: ({x}, {y}), 尺寸: ({width}, {height})")
             # x = random.randint(1, 1200)
             # y = random.randint(1, 800)
             # width = random.randint(100, 800)

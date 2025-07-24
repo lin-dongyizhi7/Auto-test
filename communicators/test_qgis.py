@@ -8,11 +8,11 @@ if __name__ == "__main__":
 
     op.click_element(element_path="Web", role_name_list=["menu item"])
 
-    op.click_element(element_path="QuickMapServices", role_name_list=["menu item"])
+    op.click_element(element_path="Web/QuickMapServices", role_name_list=["menu item", "menu item"])
 
-    op.click_element(element_path="OSM", role_name_list=["menu item"])
+    op.click_element(element_path="Web/QuickMapServices/OSM", role_name_list=["menu item", "menu item", "menu item"])
 
-    op.click_element(element_path="OSM Standard", role_name_list=["menu item"])
+    op.click_element(element_path="Web/QuickMapServices/OSM/OSM Standard", role_name_list=["menu item", "menu item", "menu item", "menu item"])
 
     op.drag_to_percentage("QGIS3", 0.6, 0.7, 0.5, 0.6)
 
