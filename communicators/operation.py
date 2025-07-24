@@ -51,17 +51,17 @@ class Operation:
         return time.time()
 
 
-    def get_location(self, element_path: str, role_name: Optional[str] = None) -> Dict[str, any]:
+    def get_location(self, element_path: str, role_name_list: Optional[List[str]] = None) -> Dict[str, any]:
         """
         通过通信类调用被测试机器的get_element接口，获取元素位置信息
         :param element_path: 元素路径，格式"父元素1/父元素2/目标元素"
-        :param role_name: 元素角色名（可选）
+        :param role_name_list: 元素角色名列表（可选），支持多个角色名匹配
         :return: 元素位置信息字典，包含{x,y,width,height,center_x,center_y}
         """
         # 调用通信类的get_element_info方法获取元素信息
         response = self.communicator.get_element_info(
             element_path=element_path,
-            role_name=role_name
+            role_name_list=role_name_list  # 改为传递角色名列表
         )
         
         # 验证响应是否成功
@@ -82,13 +82,13 @@ class Operation:
         }
 
 
-    def click_element(self, element_path: str, role_name: Optional[str] = None) -> List[Dict]:
+    def click_element(self, element_path: str, role_name_list: Optional[List[str]] = None) -> List[Dict]:
         """
         生成点击元素的指令（移动到中心位置后点击）
         param element_path: 元素路径
-        param role_name: 元素角色名（可选）
+        param role_name_list: 元素角色名列表（可选），支持多个角色名匹配
         """
-        loc = self.get_location(element_path, role_name)
+        loc = self.get_location(element_path, role_name_list)
         commands = []
         # 移动到元素中心
         commands.append(self._generate_command(
@@ -103,13 +103,13 @@ class Operation:
         self.finish_current_opts(commands)  # 完成当前操作指令集的执行
 
 
-    def right_click_element(self, element_path: str, role_name: Optional[str] = None) -> List[Dict]:
+    def right_click_element(self, element_path: str, role_name_list: Optional[List[str]] = None) -> List[Dict]:
         """
         生成右键点击元素的指令（移动到中心位置后右键点击）
         param element_path: 元素路径
-        param role_name: 元素角色名（可选）
+        param role_name_list: 元素角色名列表（可选），支持多个角色名匹配
         """
-        loc = self.get_location(element_path, role_name)
+        loc = self.get_location(element_path, role_name_list)
         commands = []
         commands.append(self._generate_command(
             "mouse_move",
@@ -122,14 +122,14 @@ class Operation:
         self.finish_current_opts(commands)  # 完成当前操作指令集的执行
 
 
-    def set_element_text(self, element_path: str, text: str, role_name: Optional[str] = None) -> List[Dict]:
+    def set_element_text(self, element_path: str, text: str, role_name_list: Optional[List[str]] = None) -> List[Dict]:
         """
         生成设置元素文本的指令（点击激活→全选→删除→输入）
         param element_path: 元素路径
         param text: 要设置的文本内容
-        param role_name: 元素角色名（可选）
+        param role_name_list: 元素角色名列表（可选），支持多个角色名匹配
         """
-        loc = self.get_location(element_path, role_name)
+        loc = self.get_location(element_path, role_name_list)
         commands = []
         # 点击激活元素
         commands.append(self._generate_command(
@@ -159,16 +159,16 @@ class Operation:
         self.finish_current_opts(commands)  # 完成当前操作指令集的执行
 
 
-    def select_combo_item(self, combo_path: str, item_text: str, role_name: Optional[str] = None) -> List[Dict]:
+    def select_combo_item(self, combo_path: str, item_text: str, role_name_list: Optional[List[str]] = None) -> List[Dict]:
         """
         生成下拉框选择的指令（点击下拉框→点击选项）
         param combo_path: 下拉框元素路径
         param item_text: 要选择的选项文本
-        param role_name: 元素角色名（可选）
+        param role_name_list: 下拉框元素角色名列表（可选）
         """
         commands = []
         # 点击下拉框
-        combo_loc = self.get_location(combo_path, role_name)
+        combo_loc = self.get_location(combo_path, role_name_list)
         commands.append(self._generate_command(
             "mouse_move",
             {"x": combo_loc["center_x"], "y": combo_loc["center_y"]}
@@ -178,8 +178,8 @@ class Operation:
             {"x": combo_loc["center_x"], "y": combo_loc["center_y"], "button": "left"}
         ))
         
-        # 点击选项
-        item_loc = self.get_location(f"{combo_path}/{item_text}", "menu item")
+        # 点击选项（指定选项角色为"menu item"）
+        item_loc = self.get_location(f"{combo_path}/{item_text}", ["menu item"])
         commands.append(self._generate_command(
             "mouse_move",
             {"x": item_loc["center_x"], "y": item_loc["center_y"]}
@@ -191,17 +191,17 @@ class Operation:
         self.finish_current_opts(commands)  # 完成当前操作指令集的执行
 
 
-    def input_text(self, element_path: Optional[str], text: str, role_name: Optional[str] = None) -> List[Dict]:
+    def input_text(self, element_path: Optional[str], text: str, role_name_list: Optional[List[str]] = None) -> List[Dict]:
         """
         生成输入文本的指令（若有元素则先点击激活）
         param element_path: 元素路径（可选）
         param text: 要输入的文本内容
-        param role_name: 元素角色名（可选）
+        param role_name_list: 元素角色名列表（可选），支持多个角色名匹配
         """
         commands = []
         # 若指定元素，先点击激活
         if element_path:
-            loc = self.get_location(element_path, role_name)
+            loc = self.get_location(element_path, role_name_list)
             commands.append(self._generate_command(
                 "mouse_move",
                 {"x": loc["center_x"], "y": loc["center_y"]}
@@ -243,7 +243,7 @@ class Operation:
         self.finish_current_opts(commands)  # 完成当前操作指令集的执行
 
 
-    def drag_map_percentage(self, start_x_pct: float, start_y_pct: float, 
+    def drag_to_percentage(self, app_name: str, start_x_pct: float, start_y_pct: float, 
                            end_x_pct: float, end_y_pct: float) -> List[Dict]:
         """
         生成按百分比拖拽地图的指令（基于屏幕尺寸计算）
@@ -252,8 +252,8 @@ class Operation:
         :param end_x_pct: 终点X坐标百分比（0-1）
         :param end_y_pct: 终点Y坐标百分比（0-1)
         """
-        # 获取屏幕尺寸（假设屏幕元素路径为"screen"）
-        screen_loc = self.get_location("screen", "screen")
+        # 获取屏幕尺寸（指定屏幕角色为["screen"]）
+        screen_loc = self.get_location(app_name, ["application"])
         screen_width = screen_loc["width"]
         screen_height = screen_loc["height"]
         
@@ -266,14 +266,18 @@ class Operation:
         return self.drag_to(start_x, start_y, end_x, end_y)
 
 
-    def drag_item_to_parent(self, item_path: str, parent_path: str) -> List[Dict]:
+    def drag_item_to_parent(self, item_path: str, parent_path: str, 
+                           item_role_list: Optional[List[str]] = None,
+                           parent_role_list: Optional[List[str]] = None) -> List[Dict]:
         """
         生成拖拽元素到父元素的指令
         :param item_path: 要拖拽的元素路径
         :param parent_path: 父元素路径
+        :param item_role_list: 拖拽元素的角色名列表（可选）
+        :param parent_role_list: 父元素的角色名列表（可选）
         """
-        item_loc = self.get_location(item_path)
-        parent_loc = self.get_location(parent_path)
+        item_loc = self.get_location(item_path, item_role_list)
+        parent_loc = self.get_location(parent_path, parent_role_list)
         
         return self.drag_to(
             start_x=item_loc["center_x"],
@@ -283,14 +287,18 @@ class Operation:
         )
 
 
-    def drag_item_to_cousin(self, item_path: str, cousin_path: str) -> List[Dict]:
+    def drag_item_to_cousin(self, item_path: str, cousin_path: str,
+                           item_role_list: Optional[List[str]] = None,
+                           cousin_role_list: Optional[List[str]] = None) -> List[Dict]:
         """
         生成拖拽元素到兄弟元素的指令
         :param item_path: 要拖拽的元素路径
         :param cousin_path: 兄弟元素路径
+        :param item_role_list: 拖拽元素的角色名列表（可选）
+        :param cousin_role_list: 兄弟元素的角色名列表（可选）
         """
-        item_loc = self.get_location(item_path)
-        cousin_loc = self.get_location(cousin_path)
+        item_loc = self.get_location(item_path, item_role_list)
+        cousin_loc = self.get_location(cousin_path, cousin_role_list)
         
         return self.drag_to(
             start_x=item_loc["center_x"],
@@ -316,7 +324,7 @@ class Operation:
         """
         commands = [ self._generate_command("mouse_scroll", {"clicks": clicks}) ]
         self.finish_current_opts(commands)  # 完成当前操作指令集的执行
-
+    
 
     def move_to(self, x: int, y: int) -> Dict:
         """
@@ -328,15 +336,14 @@ class Operation:
         self.finish_current_opts(commands)
 
 
-    def move_to_element_center(self, element_path: str, role_name: Optional[str] = None) -> Dict:
+    def move_to_element_center(self, element_path: str, role_name_list: Optional[List[str]] = None) -> Dict:
         """
         生成鼠标移动到元素中心的指令
         :param element_path: 元素路径
-        :param role_name: 元素角色名（可选）
+        :param role_name_list: 元素角色名列表（可选），支持多个角色名匹配
         """
-        loc = self.get_location(element_path, role_name)
-        commands = [ self._generate_command("mouse_move", {"x": loc["center_x"], "y": loc["center_y"]}) ]
-        self.finish_current_opts(commands)
+        loc = self.get_location(element_path, role_name_list)
+        return self.move_to(loc["center_x"], loc["center_y"])
 
 
     def export_to_json(self, file_path: str) -> None:

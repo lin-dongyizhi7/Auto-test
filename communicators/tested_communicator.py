@@ -23,14 +23,15 @@ class TestedMachineCommunicator:
         self.is_running = False  # 服务运行状态
         self.app = None  # 被测应用实例
 
-    def _get_element(self, element_path: str, role_name: Optional[str] = None) -> Dict:
+    def _get_element(self, element_path: str, role_name_list: Optional[List[Optional[str]]] = None) -> Dict:
         """
         调用dogtail查询元素信息
         :param element_path: 元素路径（如"菜单/文件/新建"）
-        :param role_name: 元素角色名（如"menu item"）
+        :param role_name_list: 角色名列表，项数与路径级数相等，每项可为空（None或""）
+                              例如：["window", "menu bar", "menu item"]
         :return: 包含元素位置、尺寸等信息的字典
         """
-        print(f"查询元素: {element_path}, 角色: {role_name}")
+        print(f"查询元素: {element_path}, 角色: {role_name_list}")
         # 这里使用dogtail的tree模块来查找元素
         try:
             # # 若未指定应用，使用系统根窗口（所有应用）
@@ -42,30 +43,37 @@ class TestedMachineCommunicator:
             if not path_parts:
                 return {"success": False, "error": "元素路径不能为空"}
 
+            # 处理角色名列表（默认空列表，长度不足则补None，过长则截断）
+            if not role_name_list:
+                role_name_list = []
+            # 确保列表长度与路径级数一致
+            adjusted_roles = []
+            for i in range(len(path_parts)):
+                if i < len(role_name_list):
+                    # 空字符串视为None（不限制角色）
+                    adjusted_roles.append(role_name_list[i] if role_name_list[i] else None)
+                else:
+                    adjusted_roles.append(None)  # 长度不足补None
+
             current_element = self.app
-            # 遍历除最后一级外的所有路径
-            for part in path_parts[:-1]:
-                # 中间层级不使用role_name过滤
-                current_element = current_element.child(name=part)
-                if not current_element:
-                    return {
-                        "success": False, 
-                        "error": 
-                            f"中间元素不存在: {part} (路径: {'/'.join(path_parts[:path_parts.index(part)+1])})"
-                    }
+            # 遍历所有层级（每级都可能有角色名）
+            for i, part in enumerate(path_parts):
+                current_role = adjusted_roles[i]
+                # 按名称和当前级角色名查找（角色名为None则不限制）
+                if current_role:
+                    found_element = current_element.child(name=part, roleName=current_role)
+                else:
+                    found_element = current_element.child(name=part)
 
-            # 处理最后一级元素，此时应用role_name（如果提供）
-            last_part = path_parts[-1]
-            if role_name:
-                target_element = current_element.child(name=last_part, roleName=role_name)
-            else:
-                target_element = current_element.child(name=last_part)
+                if not found_element:
+                    # 构建详细错误信息
+                    error_path = '/'.join(path_parts[:i+1])
+                    error_msg = f"元素不存在: {error_path}"
+                    if current_role:
+                        error_msg += f" (角色: {current_role})"
+                    return {"success": False, "error": error_msg}
 
-            if not target_element:
-                error_msg = f"最后一级元素不存在: {last_part}"
-                if role_name:
-                    error_msg += f" (角色: {role_name})"
-                return {"success": False, "error": error_msg}
+                current_element = found_element  # 进入下一级
 
             # 提取元素信息（位置、尺寸、中心坐标等）
             x, y = current_element.position
@@ -80,7 +88,7 @@ class TestedMachineCommunicator:
                     "position": {"x": x, "y": y},
                     "size": {"width": width, "height": height},
                     # "name": current_element.name,
-                    # "role_name": current_element.roleName
+                    # "role_name_list": current_element.roleName
                 }
             }
         except Exception as e:
@@ -182,7 +190,7 @@ class TestedMachineCommunicator:
                             # 处理元素查询请求
                             response = self._get_element(
                                 element_path=request["data"]["element_path"],
-                                role_name=request["data"].get("role_name")
+                                role_name_list=request["data"].get("role_name_list")
                             )
 
                         elif request["type"] == "exec_commands":

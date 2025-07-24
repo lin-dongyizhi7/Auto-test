@@ -14,6 +14,6 @@ if __name__ == "__main__":
 
     op.click_element(element_path="OSM Standard", role_name="menu item")
 
-    op.drag_map_percentage(0.6, 0.7, 0.5, 0.6)
+    op.drag_to_percentage(0.6, 0.7, 0.5, 0.6)
 
     op.click_element(element_path="Map Navigation Toolbar/Zoom to Layer(s)", role_name="push button")
