@@ -51,18 +51,18 @@ class TestMachineCommunicator:
             self.socket = None  # 连接异常时重置
             raise RuntimeError(f"通信错误: {str(e)}")
 
-    def get_element_info(self, element_path: str, role_name: Optional[str] = None) -> Dict:
+    def get_element_info(self, element_path: str, role_name_list: Optional[List[Optional[str]]] = None) -> Dict:
         """
         请求获取元素信息
         :param element_path: 元素路径（如"菜单/文件/新建"）
-        :param role_name: 元素角色名（如"push button"）
+        :param role_name_list: 元素角色名（如"push button"）
         :return: 元素信息字典，包含position和size等
         """
         return self._send_request(
             request_type="get_element",
             data={
                 "element_path": element_path,
-                "role_name": role_name
+                "role_name_list": role_name_list
             }
         )
 
