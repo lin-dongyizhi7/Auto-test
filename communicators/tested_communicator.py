@@ -102,6 +102,15 @@ class TestedMachineCommunicator:
         cached_result = self.element_cache.get(full_cache_key)
         if cached_result:
             print(f"✅ 缓存命中: {element_path}")
+            result = {
+                "success": True,
+                "data": {
+                    "position": cached_result["position"],
+                    "size": cached_result["size"],
+                    "name": cached_result["name"],
+                    "role_name": cached_result["role_name"],
+                }
+            }
             return cached_result
 
         # 3. 查找最近的已缓存父级元素
@@ -119,7 +128,7 @@ class TestedMachineCommunicator:
 
             # 检查父级缓存
             parent_cached = self.element_cache.get(parent_cache_key)
-            if parent_cached and parent_cached["success"]:
+            if parent_cached:
                 # 父级存在缓存，提取父元素对象
                 parent_element = parent_cached["data"].get("element_object")
                 if parent_element:
@@ -158,6 +167,14 @@ class TestedMachineCommunicator:
             # 提取元素信息
             x, y = current_element.position
             width, height = current_element.size
+            print(f"🔍 查询成功: {element_path}，位置: ({x}, {y}), 尺寸: ({width}, {height})")
+            store_data = {
+                "position": {"x": x, "y": y},
+                "size": {"width": width, "height": height},
+                "name": current_element.name,
+                "role_name": current_element.roleName,
+                "element_object": current_element  # 存储元素对象供子元素查询
+            }
             result = {
                 "success": True,
                 "data": {
@@ -165,12 +182,11 @@ class TestedMachineCommunicator:
                     "size": {"width": width, "height": height},
                     "name": current_element.name,
                     "role_name": current_element.roleName,
-                    "element_object": current_element  # 存储元素对象供子元素查询
                 }
             }
 
             # 5. 存入缓存
-            self.element_cache.put(full_cache_key, result)
+            self.element_cache.put(full_cache_key, store_data)
             print(f"📌 缓存新增: {element_path} (缓存大小: {len(self.element_cache.cache)}/{self.element_cache.capacity})")
             return result
 
@@ -334,8 +350,8 @@ if __name__ == "__main__":
     communicator = TestedMachineCommunicator(bind_port=8888)
     try:
         # 可指定被测应用名称，如 communicator.start(app_name="gedit")
-        communicator.start(app_name="QGIS3")  # 启动QGIS应用的测试服务
-        # communicator.start(app_name="calculator")  # 启动计算器应用的测试服务
+        # communicator.start(app_name="QGIS3")  # 启动QGIS应用的测试服务
+        communicator.start(app_name="calculator")  # 启动计算器应用的测试服务
         # communicator.start()
     except KeyboardInterrupt:
         # 按Ctrl+C停止服务
