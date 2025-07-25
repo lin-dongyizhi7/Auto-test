@@ -298,6 +298,7 @@ class TestedMachineCommunicator:
                         elif request["type"] == "disconnect":
                             # 处理主动断开连接请求
                             print(f"收到 {client_addr} 的断开连接请求")
+                            self.element_cache.clear()  # 清空缓存
                             response = {"success": True, "message": "连接已断开"}
                             client_socket.sendall(json.dumps(response).encode('utf-8'))
                             break
