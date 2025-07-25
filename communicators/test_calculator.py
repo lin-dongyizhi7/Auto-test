@@ -5,6 +5,13 @@ if __name__ == "__main__":
     op = Operation(test_machine_ip="192.168.5.128", test_machine_port=8888)
 
     # 2. 执行一系列计算器操作
+    # 计算 5² 的过程
+    op.click_element(element_path="5", role_name_list=["push button"])  # 点击数字5
+    result = op.click_image("square.png", threshold=0.8)
+    if result["success"]:
+        print(f"找到目标图片，位置: {result['data']}")
+    op.click_element(element_path="=", role_name_list=["push button"])  # 点击等号
+
     # 计算 12 + 34 的过程
     op.click_element(element_path="1", role_name_list=["push button"])  # 点击数字1
     op.click_element(element_path="2", role_name_list=["push button"])  # 点击数字2
@@ -54,9 +61,4 @@ if __name__ == "__main__":
     op.click_element(element_path="1", role_name_list=["push button"])  # 点击数字1
     op.click_element(element_path=".", role_name_list=["push button"])  # 点击小数点
     op.click_element(element_path="2", role_name_list=["push button"])  # 点击数字2
-    op.click_element(element_path="=", role_name_list=["push button"])  # 点击等号
-
-    # 计算 5² 的过程
-    op.click_element(element_path="5", role_name_list=["push button"])  # 点击数字5
-    op.click_element(element_path="\303\262", role_name_list=["push button"])  # 点击平方按钮
     op.click_element(element_path="=", role_name_list=["push button"])  # 点击等号
