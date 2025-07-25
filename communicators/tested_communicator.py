@@ -335,7 +335,7 @@ if __name__ == "__main__":
     try:
         # 可指定被测应用名称，如 communicator.start(app_name="gedit")
         communicator.start(app_name="QGIS3")  # 启动QGIS应用的测试服务
-        # communicator.startt(app_name="calculator")  # 启动计算器应用的测试服务
+        # communicator.start(app_name="calculator")  # 启动计算器应用的测试服务
         # communicator.start()
     except KeyboardInterrupt:
         # 按Ctrl+C停止服务
