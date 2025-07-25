@@ -20,7 +20,6 @@ class Operation:
         self.commands_list = []  # 存储整个测试文件生成的指令列表
         # 初始化通信类，建立连接
         self.communicator = TestMachineCommunicator(test_machine_ip, test_machine_port)
-        # self.communicator._connect()
 
         logging.basicConfig(
             level=logging.INFO,

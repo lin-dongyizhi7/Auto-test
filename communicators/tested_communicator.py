@@ -75,6 +75,23 @@ class TestedMachineCommunicator:
         self.element_cache = LRUCache(capacity=cache_capacity)  # 元素缓存
 
 
+    def _get_app_region(self) -> Optional[List[int]]:
+        """获取被监测应用的窗口信息（位置和大小）"""
+        if not self.app:
+            return None
+            
+        try:
+            # 通过dogtail获取应用窗口位置和大小
+            x, y = self.app.position
+            width, height = self.app.size
+            self.app_region = [x, y, width, height]
+            print(f"获取应用窗口信息: 位置({x},{y}), 大小({width}x{height})")
+            return self.app_region
+        except Exception as e:
+            print(f"获取应用窗口信息失败: {str(e)}")
+            return None
+
+
     def _get_screenshot(self, region: Optional[List[int]] = None) -> str:
         """
         截取屏幕或指定区域，返回base64编码
@@ -326,7 +343,17 @@ class TestedMachineCommunicator:
                         response = {"success": False, "error": "未知请求类型"}
 
                         # 处理不同类型的请求
-                        if request["type"] == "get_screenshot":
+                        if request["type"] == "get_app_region":
+                            app_region = self._get_app_region()
+                            if app_region:
+                                response = {
+                                    "success": True,
+                                    "data": {"app_region": app_region}
+                                }
+                            else:
+                                response = {"success": False, "error": "无法获取应用窗口信息"}
+                                
+                        elif request["type"] == "get_screenshot":
                             region = request["data"].get("region")
                             screenshot_data = self._get_screenshot(region)
                             if screenshot_data:

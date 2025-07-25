@@ -14,7 +14,10 @@ class TestMachineCommunicator:
         self.target_host = target_host
         self.target_port = target_port
         self.socket = None
+        self.app_region = None  # 应用区域，默认为None表示全屏
         self._connect()
+        self._get_app_region()
+
 
     def _connect(self) -> None:
         """建立与被测试机器的TCP连接"""
@@ -24,6 +27,7 @@ class TestMachineCommunicator:
             print(f"成功连接到被测试机器 {self.target_host}:{self.target_port}")
         except Exception as e:
             raise ConnectionError(f"无法连接到被测试机器: {str(e)}")
+        
 
     def _send_request(self, request_type: str, data: Dict) -> Dict:
         """
@@ -56,13 +60,29 @@ class TestMachineCommunicator:
             raise RuntimeError(f"通信错误: {str(e)}")
         
 
+    def _get_app_region(self) -> None:
+        """从被测试机获取应用窗口信息"""
+        try:
+            response = self._send_request("get_app_region", {})
+            if response.get("success"):
+                self.app_region = response["data"]["app_region"]
+                x, y, w, h = self.app_region
+                print(f"获取应用窗口区域: 位置({x},{y}), 大小({w}x{h})")
+            else:
+                print(f"获取应用窗口区域失败: {response.get('error')}")
+        except Exception as e:
+            print(f"获取应用窗口区域时发生错误: {str(e)}")
+        
+
     def get_screenshot(self, region: Optional[List[int]] = None) -> Optional[np.ndarray]:
         """
         获取被测试机的屏幕截图
         :param region: 可选区域 [x, y, width, height]
         :return: 截图的OpenCV图像对象
         """
-        response = self._send_request("get_screenshot", {"region": region})
+        use_region = region if region is not None else self.app_region
+
+        response = self._send_request("get_screenshot", {"region": use_region})
         if not response.get("success"):
             print(f"获取截图失败: {response.get('error')}")
             return None
@@ -86,6 +106,8 @@ class TestMachineCommunicator:
         :param region: 限制查找区域 [x, y, width, height]
         :return: 包含位置信息的字典
         """
+        use_region = region if region is not None else self.app_region
+
         # 读取本地目标图片
         try:
             template = cv2.imread(image_path)
@@ -97,7 +119,7 @@ class TestMachineCommunicator:
             return {"success": False, "error": f"读取目标图片失败: {str(e)}"}
 
         # 获取被测试机截图
-        screenshot = self.get_screenshot(region)
+        screenshot = self.get_screenshot(use_region)
         if screenshot is None:
             return {"success": False, "error": "无法获取屏幕截图"}
 
