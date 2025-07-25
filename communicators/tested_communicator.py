@@ -82,8 +82,9 @@ class TestedMachineCommunicator:
             
         try:
             # 通过dogtail获取应用窗口位置和大小
-            x, y = self.app.position
-            width, height = self.app.size
+            window = self.app.children[0]  # 假设第一个子元素是主窗口
+            x, y = window.position
+            width, height = window.size
             self.app_region = [x, y, width, height]
             print(f"获取应用窗口信息: 位置({x},{y}), 大小({width}x{height})")
             return self.app_region
@@ -352,7 +353,7 @@ class TestedMachineCommunicator:
                                 }
                             else:
                                 response = {"success": False, "error": "无法获取应用窗口信息"}
-                                
+
                         elif request["type"] == "get_screenshot":
                             region = request["data"].get("region")
                             screenshot_data = self._get_screenshot(region)
