@@ -1,4 +1,6 @@
 from operation import Operation
+import os
+
 
 if __name__ == "__main__":
     # 1. 实例化操作类
@@ -7,7 +9,7 @@ if __name__ == "__main__":
     # 2. 执行一系列计算器操作
     # 计算 5² 的过程
     op.click_element(element_path="5", role_name_list=["push button"])  # 点击数字5
-    result = op.click_image("image/square.png", threshold=0.8)
+    result = op.click_image(os.path.abspath("image/square.png"), threshold=0.8)
     if result["success"]:
         print(f"找到目标图片，位置: {result['data']}")
     op.click_element(element_path="=", role_name_list=["push button"])  # 点击等号

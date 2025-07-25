@@ -145,6 +145,7 @@ class TestedMachineCommunicator:
         cached_result = self.element_cache.get(full_cache_key)
         if cached_result:
             print(f"✅ 缓存命中: {element_path}")
+            print(f"位置: {cached_result['position']}, 尺寸: {cached_result['size']}, 名称: {cached_result['name']}, 角色: {cached_result['role_name']}")
             result = {
                 "success": True,
                 "data": {
@@ -154,7 +155,7 @@ class TestedMachineCommunicator:
                     "role_name": cached_result["role_name"],
                 }
             }
-            return cached_result
+            return result
 
         # 3. 查找最近的已缓存父级元素
         parent_element = None
