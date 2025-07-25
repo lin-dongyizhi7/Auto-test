@@ -1,6 +1,10 @@
 import socket
 import json
 import time
+import cv2
+import numpy as np
+from PIL import Image
+import io
 from typing import Dict, List, Optional
 
 class TestMachineCommunicator:
@@ -50,6 +54,79 @@ class TestMachineCommunicator:
         except Exception as e:
             self.socket = None  # 连接异常时重置
             raise RuntimeError(f"通信错误: {str(e)}")
+        
+
+    def get_screenshot(self, region: Optional[List[int]] = None) -> Optional[np.ndarray]:
+        """
+        获取被测试机的屏幕截图
+        :param region: 可选区域 [x, y, width, height]
+        :return: 截图的OpenCV图像对象
+        """
+        response = self._send_request("get_screenshot", {"region": region})
+        if not response.get("success"):
+            print(f"获取截图失败: {response.get('error')}")
+            return None
+
+        # 解码16进制图片数据
+        try:
+            img_hex = response["data"]["screenshot"]
+            img_bytes = bytes.fromhex(img_hex)
+            img = Image.open(io.BytesIO(img_bytes))
+            return cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR)
+        except Exception as e:
+            print(f"图片解码失败: {str(e)}")
+            return None
+
+
+    def find_image(self, image_path: str, threshold: float = 0.8, region: Optional[List[int]] = None) -> Dict:
+        """
+        在被测试机屏幕上查找目标图片
+        :param image_path: 目标图片本地路径
+        :param threshold: 匹配阈值（0-1），越高越精确
+        :param region: 限制查找区域 [x, y, width, height]
+        :return: 包含位置信息的字典
+        """
+        # 读取本地目标图片
+        try:
+            template = cv2.imread(image_path)
+            if template is None:
+                return {"success": False, "error": "目标图片不存在或无法读取"}
+            template_gray = cv2.cvtColor(template, cv2.COLOR_BGR2GRAY)
+            t_height, t_width = template_gray.shape[:2]
+        except Exception as e:
+            return {"success": False, "error": f"读取目标图片失败: {str(e)}"}
+
+        # 获取被测试机截图
+        screenshot = self.get_screenshot(region)
+        if screenshot is None:
+            return {"success": False, "error": "无法获取屏幕截图"}
+
+        # 图片匹配
+        try:
+            screenshot_gray = cv2.cvtColor(screenshot, cv2.COLOR_BGR2GRAY)
+            result = cv2.matchTemplate(screenshot_gray, template_gray, cv2.TM_CCOEFF_NORMED)
+            locations = np.where(result >= threshold)
+
+            # 提取匹配位置（取最匹配的第一个结果）
+            if len(locations[0]) > 0:
+                y, x = locations[0][0], locations[1][0]
+                return {
+                    "success": True,
+                    "data": {
+                        "x": x,
+                        "y": y,
+                        "width": t_width,
+                        "height": t_height,
+                        "center_x": x + t_width // 2,
+                        "center_y": y + t_height // 2,
+                        "confidence": float(result[y, x])
+                    }
+                }
+            else:
+                return {"success": False, "error": "未找到匹配的图片"}
+        except Exception as e:
+            return {"success": False, "error": f"图片匹配失败: {str(e)}"}
+
 
     def get_element_info(self, element_path: str, role_name_list: Optional[List[Optional[str]]] = None) -> Dict:
         """
@@ -65,6 +142,7 @@ class TestMachineCommunicator:
                 "role_name_list": role_name_list
             }
         )
+
 
     def execute_commands(self, commands: List[Dict]) -> Dict:
         """

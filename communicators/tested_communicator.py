@@ -2,6 +2,8 @@ import socket
 import json
 import time
 import random
+import io
+import base64
 import dogtail.tree
 import pyautogui
 from typing import Dict, List, Optional
@@ -71,6 +73,29 @@ class TestedMachineCommunicator:
         self.is_running = False  # 服务运行状态
         self.app = None  # 被测应用实例
         self.element_cache = LRUCache(capacity=cache_capacity)  # 元素缓存
+
+
+    def _get_screenshot(self, region: Optional[List[int]] = None) -> str:
+        """
+        截取屏幕或指定区域，返回base64编码
+        :param region: 可选区域 [x, y, width, height]，None表示全屏
+        """
+        try:
+            # 截取屏幕
+            if region:
+                screenshot = pyautogui.screenshot(region=region)
+            else:
+                screenshot = pyautogui.screenshot()
+            
+            # 转换为base64编码
+            buffer = io.BytesIO()
+            screenshot.save(buffer, format="PNG")
+            img_bytes = buffer.getvalue()
+            return img_bytes.hex()  # 用16进制传输二进制数据
+        except Exception as e:
+            print(f"截图失败: {str(e)}")
+            return ""
+        
 
     def _get_element(self, element_path: str, role_name_list: Optional[List[Optional[str]]] = None) -> Dict:
         """
@@ -264,6 +289,7 @@ class TestedMachineCommunicator:
             "results": results
         }
 
+
     def start(self, app_name: Optional[str] = None) -> None:
         """
         启动通信服务，开始监听8888端口
@@ -300,7 +326,18 @@ class TestedMachineCommunicator:
                         response = {"success": False, "error": "未知请求类型"}
 
                         # 处理不同类型的请求
-                        if request["type"] == "get_element":
+                        if request["type"] == "get_screenshot":
+                            region = request["data"].get("region")
+                            screenshot_data = self._get_screenshot(region)
+                            if screenshot_data:
+                                response = {
+                                    "success": True,
+                                    "data": {"screenshot": screenshot_data}
+                                }
+                            else:
+                                response = {"success": False, "error": "截图失败"}
+
+                        elif request["type"] == "get_element":
                             # 处理元素查询请求
                             response = self._get_element(
                                 element_path=request["data"]["element_path"],
@@ -335,6 +372,7 @@ class TestedMachineCommunicator:
         except Exception as e:
             print(f"服务启动失败: {str(e)}")
             self.stop()
+
 
     def stop(self) -> None:
         """停止通信服务"""

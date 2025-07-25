@@ -51,6 +51,51 @@ class Operation:
         return time.time()
 
 
+    def find_image(self, image_path: str, threshold: float = 0.8, region: Optional[List[int]] = None) -> Dict:
+        """
+        查找图片位置
+        :param image_path: 目标图片本地路径
+        :param threshold: 匹配阈值
+        :param region: 查找区域 [x, y, width, height]
+        :return: 位置信息字典
+        """
+        self.logger.info(f"查找图片: {image_path}")
+        result = self.communicator.find_image(image_path, threshold, region)
+        if result.get("success"):
+            self.logger.info(f"找到图片，位置: ({result['data']['x']}, {result['data']['y']})")
+        else:
+            self.logger.error(f"图片查找失败: {result.get('error')}")
+        return result
+    
+
+    def click_image(self, image_path: str, threshold: float = 0.8, region: Optional[List[int]] = None) -> Dict:
+        """
+        点击图片位置
+        :param image_path: 目标图片本地路径
+        :return: 操作结果
+        """
+        find_result = self.find_image(image_path, threshold, region)
+        if not find_result.get("success"):
+            return find_result
+
+        loc = find_result["data"]
+        commands = [
+            self._generate_command("mouse_move", {
+                "x": loc["center_x"], 
+                "y": loc["center_y"]
+            }),
+            self._generate_command("mouse_click", {
+                "x": loc["center_x"], 
+                "y": loc["center_y"],
+                "button": "left"
+            })
+        ]
+        self.commands_list.append(commands)
+        result = self.communicator.execute_commands(commands)
+        self.opts = []
+        return result
+
+
     def get_location(self, element_path: str, role_name_list: Optional[List[str]] = None) -> Dict[str, any]:
         """
         通过通信类调用被测试机器的get_element接口，获取元素位置信息
