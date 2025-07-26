@@ -98,21 +98,47 @@ class TestedMachineCommunicator:
         截取屏幕或指定区域，返回base64编码
         :param region: 可选区域 [x, y, width, height]，None表示全屏
         """
+        # 1. 验证区域参数合法性
+        if region:
+            if len(region) != 4:
+                return {
+                    "success": False,
+                    "error": f"区域参数格式错误，需为[x, y, width, height]，实际为{region}"
+                }
+            x, y, w, h = region
+            if w <= 0 or h <= 0:
+                return {
+                    "success": False,
+                    "error": f"区域尺寸无效（宽高必须为正数）：width={w}, height={h}"
+                }
+
+        # 2. 执行截图操作
         try:
-            # 截取屏幕
             if region:
                 screenshot = pyautogui.screenshot(region=region)
             else:
                 screenshot = pyautogui.screenshot()
-            
-            # 转换为base64编码
-            buffer = io.BytesIO()
-            screenshot.save(buffer, format="PNG")
-            img_bytes = buffer.getvalue()
-            return img_bytes.hex()  # 用16进制传输二进制数据
         except Exception as e:
-            print(f"截图失败: {str(e)}")
-            return ""
+            return {
+                "success": False,
+                "error": f"截图操作失败：{str(e)}（可能区域超出屏幕范围）"
+            }
+
+        # 3. 图片编码为十六进制
+        buffer = io.BytesIO()
+        try:
+            # 限制图片质量，避免数据量过大
+            screenshot.save(buffer, format="PNG", optimize=True)
+            img_bytes = buffer.getvalue()
+        except Exception as e:
+            return {
+                "success": False,
+                "error": f"图片编码失败：{str(e)}"
+            }
+        
+        # 4. 验证编码结果
+        img_hex = img_bytes.hex()
+        return img_hex
         
 
     def _get_element(self, element_path: str, role_name_list: Optional[List[Optional[str]]] = None) -> Dict:
@@ -361,7 +387,11 @@ class TestedMachineCommunicator:
                             if screenshot_data:
                                 response = {
                                     "success": True,
-                                    "data": {"screenshot": screenshot_data}
+                                    "data": {
+                                        "screenshot": screenshot_data, 
+                                        "size": len(screenshot_data),
+                                        "format": "png"
+                                    }
                                 }
                             else:
                                 response = {"success": False, "error": "截图失败"}

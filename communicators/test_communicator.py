@@ -52,9 +52,21 @@ class TestMachineCommunicator:
             # 发送请求长度和内容
             self.socket.sendall(sendJson)
             
-            # 接收响应（设置1024*1024字节缓冲区）
-            response_data = self.socket.recv(1024 * 1024).decode('utf-8')
+            # 循环接收所有数据（解决截断问题）
+            response_bytes = b""  # 先存字节流，避免过早解码
+            while True:
+                chunk = self.socket.recv(4096)  # 每次接收4KB（可调整）
+                if not chunk:  # 对方关闭连接，接收完毕
+                    break
+                response_bytes += chunk
+            # 如果没有收到任何数据，可能是连接断开
+            if not response_bytes:  # 空响应处理
+                raise RuntimeError("未收到响应，连接可能已断开")
+        
+            # 完整字节流解码后解析
+            response_data = response_bytes.decode('utf-8')
             return json.loads(response_data)
+        
         except Exception as e:
             self.socket = None  # 连接异常时重置
             raise RuntimeError(f"通信错误: {str(e)}")
@@ -90,6 +102,10 @@ class TestMachineCommunicator:
         # 解码16进制图片数据
         try:
             img_hex = response["data"]["screenshot"]
+            # 校验数据长度
+            if len(img_hex) != response["data"]["size"]:
+                print(f"数据不完整：接收{len(img_hex)}字节，预期{response["data"]['size']}字节")
+                return None
             img_bytes = bytes.fromhex(img_hex)
             img = Image.open(io.BytesIO(img_bytes))
             return cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR)
