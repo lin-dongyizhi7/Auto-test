@@ -7,9 +7,11 @@ if __name__ == "__main__":
     op = Operation(test_machine_ip="192.168.5.128", test_machine_port=8888)
 
     # 2. 执行一系列计算器操作
+    multiplication_sign = b'\303\227'.decode('utf-8')
+    divide_sign = b'\303\267'.decode('utf-8')
     # 计算 5² 的过程
     op.click_element(element_path="5", role_name_list=["push button"])  # 点击数字5
-    result = op.click_image(os.path.abspath("image/square.png"), threshold=0.8)
+    result = op.click_image(os.path.abspath("communicators/image/square.png"), threshold=0.8)
     if result["success"]:
         print(f"找到目标图片，位置: {result['data']}")
     op.click_element(element_path="=", role_name_list=["push button"])  # 点击等号
@@ -24,7 +26,7 @@ if __name__ == "__main__":
 
     # 计算 5 * 6 - 7 的过程
     op.click_element(element_path="5", role_name_list=["push button"])  # 点击数字5
-    op.click_element(element_path="\303\227", role_name_list=["push button"])  # 点击乘号
+    op.click_element(element_path=multiplication_sign, role_name_list=["push button"])  # 点击乘号
     op.click_element(element_path="6", role_name_list=["push button"])  # 点击数字6
     op.click_element(element_path="-", role_name_list=["push button"])  # 点击减号
     op.click_element(element_path="7", role_name_list=["push button"])  # 点击数字7
@@ -33,7 +35,7 @@ if __name__ == "__main__":
     # 计算 81 / 9 的过程
     op.click_element(element_path="8", role_name_list=["push button"])  # 点击数字8
     op.click_element(element_path="1", role_name_list=["push button"])  # 点击数字1
-    op.click_element(element_path="\303\267", role_name_list=["push button"])  # 点击除号
+    op.click_element(element_path=divide_sign, role_name_list=["push button"])  # 点击除号
     op.click_element(element_path="9", role_name_list=["push button"])  # 点击数字9
     op.click_element(element_path="=", role_name_list=["push button"])  # 点击等号
 
@@ -55,11 +57,11 @@ if __name__ == "__main__":
     op.click_element(element_path="2", role_name_list=["push button"])  # 点击数字2
     op.click_element(element_path=".", role_name_list=["push button"])  # 点击小数点
     op.click_element(element_path="5", role_name_list=["push button"])  # 点击数字5
-    op.click_element(element_path="\303\227", role_name_list=["push button"])  # 点击乘号
+    op.click_element(element_path=multiplication_sign, role_name_list=["push button"])  # 点击乘号
     op.click_element(element_path="4", role_name_list=["push button"])  # 点击数字4
     op.click_element(element_path=".", role_name_list=["push button"])  # 点击小数点
     op.click_element(element_path="2", role_name_list=["push button"])  # 点击数字2
-    op.click_element(element_path="\303\267", role_name_list=["push button"])  # 点击除号
+    op.click_element(element_path=divide_sign, role_name_list=["push button"])  # 点击除号
     op.click_element(element_path="1", role_name_list=["push button"])  # 点击数字1
     op.click_element(element_path=".", role_name_list=["push button"])  # 点击小数点
     op.click_element(element_path="2", role_name_list=["push button"])  # 点击数字2
