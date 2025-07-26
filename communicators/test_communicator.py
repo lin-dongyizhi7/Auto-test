@@ -52,19 +52,8 @@ class TestMachineCommunicator:
             # 发送请求长度和内容
             self.socket.sendall(sendJson)
             
-            # 循环接收所有数据（解决截断问题）
-            response_bytes = b""  # 先存字节流，避免过早解码
-            while True:
-                chunk = self.socket.recv(4096)  # 每次接收4KB（可调整）
-                if not chunk:  # 对方关闭连接，接收完毕
-                    break
-                response_bytes += chunk
-            # 如果没有收到任何数据，可能是连接断开
-            if not response_bytes:  # 空响应处理
-                raise RuntimeError("未收到响应，连接可能已断开")
-        
-            # 完整字节流解码后解析
-            response_data = response_bytes.decode('utf-8')
+            # 接收响应（设置4096*1024字节缓冲区）
+            response_data = self.socket.recv(4096 * 1024).decode('utf-8')
             return json.loads(response_data)
         
         except Exception as e:
