@@ -9,12 +9,13 @@ if __name__ == "__main__":
     # 2. 执行一系列计算器操作
     multiplication_sign = b'\303\227'.decode('utf-8')
     divide_sign = b'\303\267'.decode('utf-8')
+    point_sign = b''.decode('utf-8')
     # 计算 5² 的过程
-    op.click_element(element_path="5", role_name_list=["push button"])  # 点击数字5
-    result = op.click_image(os.path.abspath("communicators/image/square.png"), threshold=0.8)
-    if result["success"]:
-        print(f"找到目标图片，位置: {result['data']}")
-    op.click_element(element_path="=", role_name_list=["push button"])  # 点击等号
+    # op.click_element(element_path="5", role_name_list=["push button"])  # 点击数字5
+    # result = op.click_image(os.path.abspath("communicators/image/square.png"), threshold=0.8)
+    # if result["success"]:
+    #     print(f"找到目标图片，位置: {result['data']}")
+    # op.click_element(element_path="=", role_name_list=["push button"])  # 点击等号
 
     # 计算 12 + 34 的过程
     op.click_element(element_path="1", role_name_list=["push button"])  # 点击数字1
