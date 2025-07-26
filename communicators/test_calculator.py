@@ -4,7 +4,7 @@ import os
 
 if __name__ == "__main__":
     # 1. 实例化操作类
-    op = Operation(test_machine_ip="192.168.5.128", test_machine_port=8888)
+    op = Operation(test_machine_ip="192.168.5.130", test_machine_port=8888)
 
     # 2. 执行一系列计算器操作
     multiplication_sign = b'\303\227'.decode('utf-8')
