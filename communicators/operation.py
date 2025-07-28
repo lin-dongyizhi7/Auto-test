@@ -297,15 +297,14 @@ class Operation:
         :param end_y_pct: 终点Y坐标百分比（0-1)
         """
         # 获取屏幕尺寸（指定屏幕角色为["screen"]）
-        screen_loc = self.get_location(app_name, ["application"])
-        screen_width = screen_loc["width"]
-        screen_height = screen_loc["height"]
+        screen_loc = self.communicator.app_region
+        x, y, w, h = screen_loc
         
         # 计算坐标
-        start_x = int(screen_width * start_x_pct)
-        start_y = int(screen_height * start_y_pct)
-        end_x = int(screen_width * end_x_pct)
-        end_y = int(screen_height * end_y_pct)
+        start_x = int(w * start_x_pct + x)
+        start_y = int(h * start_y_pct + y)
+        end_x = int(w * end_x_pct + x)
+        end_y = int(h * end_y_pct + y)
         
         return self.drag_to(start_x, start_y, end_x, end_y)
 
