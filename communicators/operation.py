@@ -166,6 +166,29 @@ class Operation:
         self.finish_current_opts(commands)  # 完成当前操作指令集的执行
 
 
+    def double_click_element(self, element_path: str, role_name_list: Optional[List[str]] = None) -> List[Dict]:
+        """
+        生成双击元素的指令（移动到中心位置后双击）
+        param element_path: 元素路径
+        param role_name_list: 元素角色名列表（可选），支持多个角色名匹配
+        """
+        loc = self.get_location(element_path, role_name_list)
+        commands = []
+        commands.append(self._generate_command(
+            "mouse_move",
+            {"x": loc["center_x"], "y": loc["center_y"]}
+        ))
+        commands.append(self._generate_command(
+            "mouse_click",
+            {"x": loc["center_x"], "y": loc["center_y"], "button": "left"}
+        ))
+        commands.append(self._generate_command(
+            "mouse_click",
+            {"x": loc["center_x"], "y": loc["center_y"], "button": "left"}
+        ))  
+        self.finish_current_opts(commands)  # 完成当前操作指令集的执行
+
+
     def set_element_text(self, element_path: str, text: str, role_name_list: Optional[List[str]] = None) -> List[Dict]:
         """
         生成设置元素文本的指令（点击激活→全选→删除→输入）
