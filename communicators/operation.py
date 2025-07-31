@@ -258,6 +258,44 @@ class Operation:
         self.finish_current_opts(commands)  # 完成当前操作指令集的执行
 
 
+    def set_radio_btn(self, radio_btn_path: str, role_name_list: Optional[List[str]] = None) -> List[Dict]:
+        """
+        生成设置单选按钮的指令（点击单选按钮）
+        param radio_btn_path: 单选按钮元素路径
+        param role_name_list: 单选按钮元素角色名列表（可选）
+        """
+        loc = self.get_location(radio_btn_path, role_name_list)
+        commands = []
+        commands.append(self._generate_command(
+            "mouse_move",
+            {"x": loc["center_x"], "y": loc["center_y"]}
+        ))
+        commands.append(self._generate_command(
+            "mouse_click",
+            {"x": loc["center_x"], "y": loc["center_y"], "button": "left"}
+        ))
+        self.finish_current_opts(commands)  # 完成当前操作指令集的执行
+    
+
+    def set_checkbox(self, checkbox_path: str, role_name_list: Optional[List[str]] = None) -> List[Dict]:   
+        """
+        生成设置复选框的指令（点击复选框）
+        param checkbox_path: 复选框元素路径
+        param role_name_list: 复选框元素角色名列表（可选）
+        """
+        loc = self.get_location(checkbox_path, role_name_list)  
+        commands = []
+        commands.append(self._generate_command(
+            "mouse_move",
+            {"x": loc["center_x"], "y": loc["center_y"]}
+        ))
+        commands.append(self._generate_command( 
+            "mouse_click",
+            {"x": loc["center_x"], "y": loc["center_y"], "button": "left"}
+        ))
+        self.finish_current_opts(commands)  # 完成当前操作指令集的执行
+    
+    
     def input_text(self, element_path: Optional[str], text: str, role_name_list: Optional[List[str]] = None) -> List[Dict]:
         """
         生成输入文本的指令（若有元素则先点击激活）
