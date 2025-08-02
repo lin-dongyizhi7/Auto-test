@@ -1,6 +1,6 @@
-# QGIS自动化测试前端
+# 自动化测试前端
 
-基于Vue3 + TypeScript + Element Plus的QGIS自动化测试图形化界面。
+基于Vue3 + TypeScript + Element Plus的自动化测试图形化界面。
 
 ## 功能特性
 
@@ -237,4 +237,4 @@ getLogs(): Promise<LogMessage[]>
 
 ## 联系方式
 
-如有问题或建议，请提交 Issue 或联系开发团队。 
+如有问题或建议，请提交 Issue 或联系开发团队。
