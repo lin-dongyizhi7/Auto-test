@@ -1,8 +1,8 @@
-# QGIS自动化测试系统
+# 自动化测试系统
 
 ## 项目概述
 
-这是一个完整的QGIS自动化测试系统，包含前端图形化界面和后端API服务。系统通过前端页面进行图形化操作和配置，后端接收API请求并调用`operation.py`中的函数与被测试机器建立连接和执行对应的自动化操作。
+这是一个完整的自动化测试系统，包含前端图形化界面和后端API服务。系统通过前端页面进行图形化操作和配置，后端接收API请求并调用 `operation.py`中的函数与被测试机器建立连接和执行对应的自动化操作。
 
 ## 系统架构
 
@@ -56,10 +56,12 @@ Auto-test/
 ### 1. 环境准备
 
 #### 前端环境
-- Node.js 16+ 
+
+- Node.js 16+
 - npm 或 yarn
 
 #### 后端环境
+
 - Python 3.8+
 - pip
 
@@ -171,6 +173,7 @@ npm run dev
 ### 1. 连接被测试机器
 
 在前端界面中：
+
 1. 进入"操作控制"页面
 2. 输入被测试机器的IP地址和端口
 3. 点击"连接"按钮
@@ -178,18 +181,21 @@ npm run dev
 ### 2. 执行自动化操作
 
 #### 点击元素
+
 ```javascript
 // 前端API调用
 await operationAPI.clickElement("button[0]", ["push button"]);
 ```
 
 #### 点击图片
+
 ```javascript
 // 前端API调用
 await operationAPI.clickImage("/path/to/image.png", 0.8);
 ```
 
 #### 拖拽操作
+
 ```javascript
 // 前端API调用
 await operationAPI.dragTo(100, 100, 200, 200);
@@ -229,6 +235,7 @@ python test_api.py
 ### 生产环境部署
 
 #### 前端部署
+
 ```bash
 cd frontend
 npm run build
@@ -236,6 +243,7 @@ npm run build
 ```
 
 #### 后端部署
+
 ```bash
 cd backend
 pip install -r requirements.txt
@@ -267,16 +275,17 @@ services:
 ### 常见问题
 
 1. **前端无法连接后端**
+
    - 检查后端服务是否启动
    - 检查端口8080是否被占用
    - 检查CORS配置
-
 2. **后端无法连接被测试机器**
+
    - 检查被测试机器是否启动
    - 检查IP地址和端口是否正确
    - 检查网络连接
-
 3. **操作执行失败**
+
    - 检查元素路径是否正确
    - 检查图片路径是否存在
    - 查看后端日志获取详细错误信息
