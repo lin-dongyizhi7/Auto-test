@@ -383,19 +383,3 @@ docker run -p 8080:8080 qgis-backend
    # Linux/Mac添加执行权限
    chmod +x start.sh
    ```
-
-## 贡献指南
-
-1. Fork项目
-2. 创建功能分支
-3. 提交更改
-4. 推送到分支
-5. 创建Pull Request
-
-## 许可证
-
-本项目采用MIT许可证。
-
-## 联系方式
-
-如有问题或建议，请提交Issue或联系开发团队。
