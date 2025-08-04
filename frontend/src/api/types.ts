@@ -87,4 +87,40 @@ export interface SystemSettings {
     autoRefresh: boolean
     refreshInterval: number
   }
+}
+
+// 脚本管理相关类型
+export interface ScriptInfo {
+  id: string;
+  name: string;
+  description?: string;
+  content: string;
+  createdAt: string;
+  updatedAt: string;
+  status: 'idle' | 'running' | 'completed' | 'failed';
+  lastRunTime?: string;
+  runCount: number;
+}
+
+export interface CreateScriptRequest {
+  name: string;
+  description?: string;
+  content: string;
+}
+
+export interface UpdateScriptRequest {
+  name?: string;
+  description?: string;
+  content?: string;
+}
+
+export interface ScriptRunResult {
+  success: boolean;
+  output?: string;
+  error?: string;
+  executionTime?: number;
+}
+
+export interface ImportScriptRequest {
+  file: File;
 } 

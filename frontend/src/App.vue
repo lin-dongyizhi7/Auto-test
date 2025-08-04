@@ -6,7 +6,7 @@
         <div class="header-left">
           <h2 class="app-title">
             <el-icon><Monitor /></el-icon>
-            QGIS自动化测试系统
+            自动化测试系统
           </h2>
         </div>
         <div class="header-right">

@@ -10,11 +10,13 @@ import sys
 import logging
 from typing import Dict, List, Optional, Any
 from contextlib import asynccontextmanager
+from datetime import datetime
+import time
 
 # 添加项目根目录到Python路径
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 import uvicorn
@@ -73,6 +75,38 @@ class OperationResult(BaseModel):
     data: Optional[Dict[str, Any]] = None
     error: Optional[str] = None
     message: Optional[str] = None
+
+# 脚本管理相关模型
+class ScriptInfo(BaseModel):
+    id: str
+    name: str
+    description: Optional[str] = None
+    content: str
+    createdAt: str
+    updatedAt: str
+    status: str = "idle"
+    lastRunTime: Optional[str] = None
+    runCount: int = 0
+
+class CreateScriptRequest(BaseModel):
+    name: str = Field(..., description="脚本名称")
+    description: Optional[str] = Field(None, description="脚本描述")
+    content: str = Field(..., description="脚本内容")
+
+class UpdateScriptRequest(BaseModel):
+    name: Optional[str] = Field(None, description="脚本名称")
+    description: Optional[str] = Field(None, description="脚本描述")
+    content: Optional[str] = Field(None, description="脚本内容")
+
+class ScriptRunResult(BaseModel):
+    success: bool
+    output: Optional[str] = None
+    error: Optional[str] = None
+    executionTime: Optional[int] = None
+
+# 模拟脚本存储（实际项目中应该使用数据库）
+scripts_storage: Dict[str, ScriptInfo] = {}
+script_counter = 0
 
 # 应用生命周期管理
 @asynccontextmanager
@@ -360,6 +394,300 @@ async def find_image(request: ImageOperationRequest):
             error=str(e),
             message="查找图片失败"
         )
+
+# 脚本管理API
+@app.get("/scripts")
+async def get_scripts():
+    """获取脚本列表"""
+    try:
+        scripts = list(scripts_storage.values())
+        return create_operation_result(
+            success=True,
+            data=scripts,
+            message="获取脚本列表成功"
+        )
+    except Exception as e:
+        logger.error(f"获取脚本列表失败: {str(e)}")
+        return create_operation_result(
+            success=False,
+            error=str(e),
+            message="获取脚本列表失败"
+        )
+
+@app.get("/scripts/{script_id}")
+async def get_script(script_id: str):
+    """获取单个脚本"""
+    try:
+        if script_id not in scripts_storage:
+            raise HTTPException(status_code=404, detail="脚本不存在")
+        
+        script = scripts_storage[script_id]
+        return create_operation_result(
+            success=True,
+            data=script,
+            message="获取脚本成功"
+        )
+    except Exception as e:
+        logger.error(f"获取脚本失败: {str(e)}")
+        return create_operation_result(
+            success=False,
+            error=str(e),
+            message="获取脚本失败"
+        )
+
+@app.post("/scripts")
+async def create_script(request: CreateScriptRequest):
+    """创建脚本"""
+    global script_counter
+    try:
+        script_counter += 1
+        script_id = f"script_{script_counter}"
+        
+        now = datetime.now().isoformat()
+        script = ScriptInfo(
+            id=script_id,
+            name=request.name,
+            description=request.description,
+            content=request.content,
+            createdAt=now,
+            updatedAt=now
+        )
+        
+        scripts_storage[script_id] = script
+        
+        logger.info(f"创建脚本成功: {script_id}")
+        return create_operation_result(
+            success=True,
+            data=script,
+            message="脚本创建成功"
+        )
+    except Exception as e:
+        logger.error(f"创建脚本失败: {str(e)}")
+        return create_operation_result(
+            success=False,
+            error=str(e),
+            message="脚本创建失败"
+        )
+
+@app.put("/scripts/{script_id}")
+async def update_script(script_id: str, request: UpdateScriptRequest):
+    """更新脚本"""
+    try:
+        if script_id not in scripts_storage:
+            raise HTTPException(status_code=404, detail="脚本不存在")
+        
+        script = scripts_storage[script_id]
+        
+        if request.name is not None:
+            script.name = request.name
+        if request.description is not None:
+            script.description = request.description
+        if request.content is not None:
+            script.content = request.content
+        
+        script.updatedAt = datetime.now().isoformat()
+        
+        logger.info(f"更新脚本成功: {script_id}")
+        return create_operation_result(
+            success=True,
+            data=script,
+            message="脚本更新成功"
+        )
+    except Exception as e:
+        logger.error(f"更新脚本失败: {str(e)}")
+        return create_operation_result(
+            success=False,
+            error=str(e),
+            message="脚本更新失败"
+        )
+
+@app.delete("/scripts/{script_id}")
+async def delete_script(script_id: str):
+    """删除脚本"""
+    try:
+        if script_id not in scripts_storage:
+            raise HTTPException(status_code=404, detail="脚本不存在")
+        
+        del scripts_storage[script_id]
+        
+        logger.info(f"删除脚本成功: {script_id}")
+        return create_operation_result(
+            success=True,
+            message="脚本删除成功"
+        )
+    except Exception as e:
+        logger.error(f"删除脚本失败: {str(e)}")
+        return create_operation_result(
+            success=False,
+            error=str(e),
+            message="脚本删除失败"
+        )
+
+@app.post("/scripts/{script_id}/run")
+async def run_script(script_id: str):
+    """运行脚本"""
+    try:
+        if script_id not in scripts_storage:
+            raise HTTPException(status_code=404, detail="脚本不存在")
+        
+        script = scripts_storage[script_id]
+        
+        # 更新脚本状态为运行中
+        script.status = "running"
+        script.updatedAt = datetime.now().isoformat()
+        
+        start_time = time.time()
+        
+        try:
+            # 这里应该实际执行Python脚本
+            # 为了演示，我们只是模拟执行
+            import subprocess
+            import tempfile
+            import os
+            
+            # 创建临时文件
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
+                f.write(script.content)
+                temp_file = f.name
+            
+            # 执行脚本
+            result = subprocess.run(
+                ['python', temp_file],
+                capture_output=True,
+                text=True,
+                timeout=30  # 30秒超时
+            )
+            
+            execution_time = int((time.time() - start_time) * 1000)
+            
+            # 清理临时文件
+            os.unlink(temp_file)
+            
+            # 更新脚本状态
+            script.status = "completed" if result.returncode == 0 else "failed"
+            script.runCount += 1
+            script.lastRunTime = datetime.now().isoformat()
+            script.updatedAt = script.lastRunTime
+            
+            run_result = ScriptRunResult(
+                success=result.returncode == 0,
+                output=result.stdout,
+                error=result.stderr if result.returncode != 0 else None,
+                executionTime=execution_time
+            )
+            
+            logger.info(f"脚本运行成功: {script_id}")
+            return create_operation_result(
+                success=True,
+                data=run_result,
+                message="脚本运行成功"
+            )
+            
+        except subprocess.TimeoutExpired:
+            script.status = "failed"
+            script.updatedAt = datetime.now().isoformat()
+            
+            run_result = ScriptRunResult(
+                success=False,
+                error="脚本执行超时",
+                executionTime=30000
+            )
+            
+            logger.error(f"脚本运行超时: {script_id}")
+            return create_operation_result(
+                success=False,
+                data=run_result,
+                message="脚本运行超时"
+            )
+            
+        except Exception as e:
+            script.status = "failed"
+            script.updatedAt = datetime.now().isoformat()
+            
+            run_result = ScriptRunResult(
+                success=False,
+                error=str(e),
+                executionTime=int((time.time() - start_time) * 1000)
+            )
+            
+            logger.error(f"脚本运行失败: {script_id}, 错误: {str(e)}")
+            return create_operation_result(
+                success=False,
+                data=run_result,
+                message="脚本运行失败"
+            )
+            
+    except Exception as e:
+        logger.error(f"运行脚本失败: {str(e)}")
+        return create_operation_result(
+            success=False,
+            error=str(e),
+            message="运行脚本失败"
+        )
+
+@app.post("/scripts/import")
+async def import_script(file: UploadFile = File(...)):
+    """导入脚本"""
+    global script_counter
+    try:
+        if not file.filename.endswith('.py'):
+            raise HTTPException(status_code=400, detail="只能导入.py文件")
+        
+        content = await file.read()
+        script_content = content.decode('utf-8')
+        
+        # 从文件名获取脚本名称
+        script_name = file.filename.replace('.py', '')
+        
+        script_counter += 1
+        script_id = f"script_{script_counter}"
+        
+        now = datetime.now().isoformat()
+        script = ScriptInfo(
+            id=script_id,
+            name=script_name,
+            description=f"从文件 {file.filename} 导入",
+            content=script_content,
+            createdAt=now,
+            updatedAt=now
+        )
+        
+        scripts_storage[script_id] = script
+        
+        logger.info(f"导入脚本成功: {script_id}")
+        return create_operation_result(
+            success=True,
+            data=script,
+            message="脚本导入成功"
+        )
+    except Exception as e:
+        logger.error(f"导入脚本失败: {str(e)}")
+        return create_operation_result(
+            success=False,
+            error=str(e),
+            message="脚本导入失败"
+        )
+
+@app.get("/scripts/{script_id}/export")
+async def export_script(script_id: str):
+    """导出脚本"""
+    try:
+        if script_id not in scripts_storage:
+            raise HTTPException(status_code=404, detail="脚本不存在")
+        
+        script = scripts_storage[script_id]
+        
+        # 返回脚本内容作为文件下载
+        from fastapi.responses import Response
+        
+        return Response(
+            content=script.content,
+            media_type="text/plain",
+            headers={"Content-Disposition": f"attachment; filename={script.name}.py"}
+        )
+    except Exception as e:
+        logger.error(f"导出脚本失败: {str(e)}")
+        raise HTTPException(status_code=500, detail="导出脚本失败")
 
 if __name__ == "__main__":
     # 启动服务器

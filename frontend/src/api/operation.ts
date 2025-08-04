@@ -103,4 +103,41 @@ export const operationAPI = {
     const response = await request.post('/api/execute-commands', { commands })
     return response.data
   }
-} 
+}
+
+// 脚本管理API
+export const scriptAPI = {
+  // 获取脚本列表
+  getScripts: () => request.get<ScriptInfo[]>('/scripts'),
+  
+  // 获取单个脚本
+  getScript: (id: string) => request.get<ScriptInfo>(`/scripts/${id}`),
+  
+  // 创建脚本
+  createScript: (data: CreateScriptRequest) => request.post<ScriptInfo>('/scripts', data),
+  
+  // 更新脚本
+  updateScript: (id: string, data: UpdateScriptRequest) => request.put<ScriptInfo>(`/scripts/${id}`, data),
+  
+  // 删除脚本
+  deleteScript: (id: string) => request.delete(`/scripts/${id}`),
+  
+  // 运行脚本
+  runScript: (id: string) => request.post<ScriptRunResult>(`/scripts/${id}/run`),
+  
+  // 导入脚本
+  importScript: (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return request.post<ScriptInfo>('/scripts/import', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    });
+  },
+  
+  // 导出脚本
+  exportScript: (id: string) => request.get(`/scripts/${id}/export`, {
+    responseType: 'blob'
+  })
+}; 
