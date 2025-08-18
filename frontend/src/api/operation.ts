@@ -1,5 +1,5 @@
 import request from '@/utils/request'
-import type { OperationResult } from './types'
+import type { OperationResult, ScriptInfo, ScriptRunResult } from './types'
 
 // 操作API接口
 export const operationAPI = {
