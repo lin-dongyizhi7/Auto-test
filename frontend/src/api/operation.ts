@@ -1,143 +1,128 @@
 import request from '@/utils/request'
-import type { OperationResult, ScriptInfo, ScriptRunResult } from './types'
+import type {
+  TestServerConnection,
+  ConnectionStatus,
+  MachineInfo,
+  AppInfo,
+  MachineAppTarget,
+  CurrentTarget,
+  ElementOperation,
+  ImageOperation,
+  DragOperation,
+  TextInput,
+  HotkeyOperation,
+  ScreenshotRequest,
+  ScreenshotData,
+  ScriptInfo,
+  CreateScriptRequest,
+  UpdateScriptRequest,
+  ScriptRunResult,
+  OperationResult,
+  ApiResponse
+} from './types'
 
-// 操作API接口
-export const operationAPI = {
-  // 连接目标机器
-  async connect(host: string, port: number): Promise<boolean> {
-    const response = await request.post('/api/connect', { host, port })
-    return response.data.success
-  },
+// 连接管理API
+export const connectToTestServer = (data: TestServerConnection): Promise<ApiResponse> => {
+  return request.post('/connect', data)
+}
 
-  // 断开连接
-  async disconnect(): Promise<void> {
-    await request.post('/api/disconnect')
-  },
+export const disconnectFromTestServer = (): Promise<ApiResponse> => {
+  return request.post('/disconnect')
+}
 
-  // 点击元素
-  async clickElement(path: string, roles?: string[]): Promise<OperationResult> {
-    const response = await request.post('/api/click-element', { path, roles })
-    return response.data
-  },
+export const getConnectionStatus = (): Promise<ApiResponse<ConnectionStatus>> => {
+  return request.get('/status')
+}
 
-  // 右键点击元素
-  async rightClickElement(path: string, roles?: string[]): Promise<OperationResult> {
-    const response = await request.post('/api/right-click-element', { path, roles })
-    return response.data
-  },
+// 多机器多应用管理API
+export const getMachines = (): Promise<ApiResponse<{ machines: MachineInfo[] }>> => {
+  return request.get('/machines')
+}
 
-  // 双击元素
-  async doubleClickElement(path: string, roles?: string[]): Promise<OperationResult> {
-    const response = await request.post('/api/double-click-element', { path, roles })
-    return response.data
-  },
+export const getApps = (machineId?: string): Promise<ApiResponse<{ apps: AppInfo[] }>> => {
+  const params = machineId ? { machine_id: machineId } : {}
+  return request.get('/apps', { params })
+}
 
-  // 点击图片
-  async clickImage(imagePath: string, threshold = 0.8): Promise<OperationResult> {
-    const response = await request.post('/api/click-image', { imagePath, threshold })
-    return response.data
-  },
+export const setTarget = (data: MachineAppTarget): Promise<ApiResponse> => {
+  return request.post('/set-target', data)
+}
 
-  // 拖拽操作
-  async dragTo(startX: number, startY: number, endX: number, endY: number): Promise<OperationResult> {
-    const response = await request.post('/api/drag-to', { startX, startY, endX, endY })
-    return response.data
-  },
+export const getCurrentTarget = (): Promise<ApiResponse<CurrentTarget>> => {
+  return request.get('/current-target')
+}
 
-  // 百分比拖拽
-  async dragToPercentage(startX: number, startY: number, endX: number, endY: number): Promise<OperationResult> {
-    const response = await request.post('/api/drag-percentage', { startX, startY, endX, endY })
-    return response.data
-  },
+export const getScreenshot = (data?: ScreenshotRequest): Promise<ApiResponse<ScreenshotData>> => {
+  return request.post('/screenshot', data)
+}
 
-  // 输入文本
-  async inputText(text: string, elementPath?: string): Promise<OperationResult> {
-    const response = await request.post('/api/input-text', { text, elementPath })
-    return response.data
-  },
+// 元素操作API
+export const clickElement = (data: ElementOperation): Promise<ApiResponse> => {
+  return request.post('/click-element', data)
+}
 
-  // 设置元素文本
-  async setElementText(path: string, text: string, roles?: string[]): Promise<OperationResult> {
-    const response = await request.post('/api/set-element-text', { path, text, roles })
-    return response.data
-  },
+export const clickImage = (data: ImageOperation): Promise<ApiResponse> => {
+  return request.post('/click-image', data)
+}
 
-  // 组合键操作
-  async hotkey(keys: string[]): Promise<OperationResult> {
-    const response = await request.post('/api/hotkey', { keys })
-    return response.data
-  },
+export const dragTo = (data: DragOperation): Promise<ApiResponse> => {
+  return request.post('/drag-to', data)
+}
 
-  // 鼠标滚动
-  async scroll(clicks: number): Promise<OperationResult> {
-    const response = await request.post('/api/scroll', { clicks })
-    return response.data
-  },
+export const inputText = (data: TextInput): Promise<ApiResponse> => {
+  return request.post('/input-text', data)
+}
 
-  // 鼠标移动
-  async moveTo(x: number, y: number): Promise<OperationResult> {
-    const response = await request.post('/api/move-to', { x, y })
-    return response.data
-  },
+export const hotkey = (data: HotkeyOperation): Promise<ApiResponse> => {
+  return request.post('/hotkey', data)
+}
 
-  // 移动到元素中心
-  async moveToElementCenter(path: string, roles?: string[]): Promise<OperationResult> {
-    const response = await request.post('/api/move-to-element', { path, roles })
-    return response.data
-  },
+export const getElementInfo = (path: string, roles?: string): Promise<ApiResponse> => {
+  const params = { path, ...(roles && { roles }) }
+  return request.get('/element-info', { params })
+}
 
-  // 获取元素信息
-  async getElementInfo(path: string, roles?: string[]): Promise<OperationResult> {
-    const response = await request.get('/api/element-info', { params: { path, roles } })
-    return response.data
-  },
-
-  // 查找图片
-  async findImage(imagePath: string, threshold = 0.8): Promise<OperationResult> {
-    const response = await request.post('/api/find-image', { imagePath, threshold })
-    return response.data
-  },
-
-  // 执行自定义指令
-  async executeCommands(commands: any[]): Promise<OperationResult> {
-    const response = await request.post('/api/execute-commands', { commands })
-    return response.data
-  }
+export const findImage = (data: ImageOperation): Promise<ApiResponse> => {
+  return request.post('/find-image', data)
 }
 
 // 脚本管理API
-export const scriptAPI = {
-  // 获取脚本列表
-  getScripts: () => request.get<ScriptInfo[]>('/scripts'),
-  
-  // 获取单个脚本
-  getScript: (id: string) => request.get<ScriptInfo>(`/scripts/${id}`),
-  
-  // 创建脚本
-  createScript: (data: CreateScriptRequest) => request.post<ScriptInfo>('/scripts', data),
-  
-  // 更新脚本
-  updateScript: (id: string, data: UpdateScriptRequest) => request.put<ScriptInfo>(`/scripts/${id}`, data),
-  
-  // 删除脚本
-  deleteScript: (id: string) => request.delete(`/scripts/${id}`),
-  
-  // 运行脚本
-  runScript: (id: string) => request.post<ScriptRunResult>(`/scripts/${id}/run`),
-  
-  // 导入脚本
-  importScript: (file: File) => {
-    const formData = new FormData();
-    formData.append('file', file);
-    return request.post<ScriptInfo>('/scripts/import', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data'
-      }
-    });
-  },
-  
-  // 导出脚本
-  exportScript: (id: string) => request.get(`/scripts/${id}/export`, {
+export const getScripts = (): Promise<ApiResponse<ScriptInfo[]>> => {
+  return request.get('/scripts')
+}
+
+export const getScript = (id: string): Promise<ApiResponse<ScriptInfo>> => {
+  return request.get(`/scripts/${id}`)
+}
+
+export const createScript = (data: CreateScriptRequest): Promise<ApiResponse<ScriptInfo>> => {
+  return request.post('/scripts', data)
+}
+
+export const updateScript = (id: string, data: UpdateScriptRequest): Promise<ApiResponse<ScriptInfo>> => {
+  return request.put(`/scripts/${id}`, data)
+}
+
+export const deleteScript = (id: string): Promise<ApiResponse> => {
+  return request.delete(`/scripts/${id}`)
+}
+
+export const runScript = (id: string): Promise<ApiResponse<ScriptRunResult>> => {
+  return request.post(`/scripts/${id}/run`)
+}
+
+export const importScript = (file: File): Promise<ApiResponse<ScriptInfo>> => {
+  const formData = new FormData()
+  formData.append('file', file)
+  return request.post('/scripts/import', formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data'
+    }
+  })
+}
+
+export const exportScript = (id: string): Promise<Blob> => {
+  return request.get(`/scripts/${id}/export`, {
     responseType: 'blob'
   })
-}; 
+} 

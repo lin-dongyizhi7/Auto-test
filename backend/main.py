@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 自动化测试后端API服务
-接收前端请求，调用operation.py中的函数与被测试机器建立连接和执行操作
+支持多机器多应用连接，接收前端请求，调用operation_multi_machine.py中的函数
 """
 
 import os
@@ -22,7 +22,7 @@ from pydantic import BaseModel, Field
 import uvicorn
 
 # 导入自定义模块
-from communicators.operation import Operation
+from communicators.operation_multi_machine import MultiMachineOperation
 from communicators.test_communicator import TestMachineCommunicator
 
 # 配置日志
@@ -37,17 +37,26 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # 全局变量
-operation_instance: Optional[Operation] = None
+multi_machine_operation: Optional[MultiMachineOperation] = None
+test_server: Optional[TestMachineCommunicator] = None
 is_connected = False
+current_machine_id: Optional[str] = None
+current_app_name: Optional[str] = None
+
+# 连接配置
 connection_config = {
-    "host": "localhost",
-    "port": 8888
+    "test_server_host": "localhost",
+    "test_server_port": 8889
 }
 
 # Pydantic模型定义
-class ConnectionRequest(BaseModel):
-    host: str = Field(..., description="被测试机器IP地址")
-    port: int = Field(8888, description="被测试机器端口")
+class TestServerConnectionRequest(BaseModel):
+    host: str = Field(..., description="测试服务器IP地址")
+    port: int = Field(8889, description="测试服务器端口")
+
+class MachineAppTargetRequest(BaseModel):
+    machine_id: str = Field(..., description="目标机器ID")
+    app_name: str = Field(..., description="目标应用名称")
 
 class ElementOperationRequest(BaseModel):
     path: str = Field(..., description="元素路径")
@@ -76,6 +85,19 @@ class OperationResult(BaseModel):
     error: Optional[str] = None
     message: Optional[str] = None
 
+class MachineInfo(BaseModel):
+    id: str
+    address: str
+    status: str
+    apps: List[str]
+
+class AppInfo(BaseModel):
+    id: str
+    name: str
+    machine_id: str
+    status: str
+    region: Optional[List[int]] = None
+
 # 脚本管理相关模型
 class ScriptInfo(BaseModel):
     id: str
@@ -87,16 +109,22 @@ class ScriptInfo(BaseModel):
     status: str = "idle"
     lastRunTime: Optional[str] = None
     runCount: int = 0
+    target_machine_id: Optional[str] = None
+    target_app_name: Optional[str] = None
 
 class CreateScriptRequest(BaseModel):
     name: str = Field(..., description="脚本名称")
     description: Optional[str] = Field(None, description="脚本描述")
     content: str = Field(..., description="脚本内容")
+    target_machine_id: Optional[str] = Field(None, description="目标机器ID")
+    target_app_name: Optional[str] = Field(None, description="目标应用名称")
 
 class UpdateScriptRequest(BaseModel):
     name: Optional[str] = Field(None, description="脚本名称")
     description: Optional[str] = Field(None, description="脚本描述")
     content: Optional[str] = Field(None, description="脚本内容")
+    target_machine_id: Optional[str] = Field(None, description="目标机器ID")
+    target_app_name: Optional[str] = Field(None, description="目标应用名称")
 
 class ScriptRunResult(BaseModel):
     success: bool
@@ -115,9 +143,9 @@ async def lifespan(app: FastAPI):
     logger.info("自动化测试后端服务启动")
     yield
     # 关闭时执行
-    if operation_instance:
+    if multi_machine_operation:
         try:
-            operation_instance.close()
+            multi_machine_operation.close()
             logger.info("已关闭操作实例")
         except Exception as e:
             logger.error(f"关闭操作实例时出错: {e}")
@@ -142,7 +170,7 @@ app.add_middleware(
 # 工具函数
 def check_connection():
     """检查是否已连接到被测试机器"""
-    if not is_connected or not operation_instance:
+    if not is_connected or not multi_machine_operation:
         raise HTTPException(status_code=400, detail="未连接到被测试机器，请先建立连接")
 
 def create_operation_result(success: bool, data: Optional[Dict] = None, 
@@ -172,27 +200,28 @@ async def get_status():
     """获取服务状态"""
     return {
         "connected": is_connected,
-        "host": connection_config["host"] if is_connected else None,
-        "port": connection_config["port"] if is_connected else None
+        "host": connection_config["test_server_host"] if is_connected else None,
+        "port": connection_config["test_server_port"] if is_connected else None
     }
 
 @app.post("/connect")
-async def connect(request: ConnectionRequest):
-    """连接到被测试机器"""
-    global operation_instance, is_connected, connection_config
+async def connect(request: TestServerConnectionRequest):
+    """连接到测试服务器"""
+    global multi_machine_operation, test_server, is_connected, connection_config
     
     try:
         logger.info(f"尝试连接到 {request.host}:{request.port}")
         
         # 创建操作实例
-        operation_instance = Operation(request.host, request.port)
+        multi_machine_operation = MultiMachineOperation(request.host, request.port)
+        test_server = TestMachineCommunicator(request.host, request.port)
         
         # 测试连接
-        test_result = operation_instance.communicator.get_screenshot()
+        test_result = test_server.get_screenshot()
         if test_result is not None:
             is_connected = True
-            connection_config["host"] = request.host
-            connection_config["port"] = request.port
+            connection_config["test_server_host"] = request.host
+            connection_config["test_server_port"] = request.port
             
             logger.info(f"成功连接到 {request.host}:{request.port}")
             return create_operation_result(
@@ -204,7 +233,8 @@ async def connect(request: ConnectionRequest):
             
     except Exception as e:
         logger.error(f"连接失败: {str(e)}")
-        operation_instance = None
+        multi_machine_operation = None
+        test_server = None
         is_connected = False
         return create_operation_result(
             success=False,
@@ -215,12 +245,12 @@ async def connect(request: ConnectionRequest):
 @app.post("/disconnect")
 async def disconnect():
     """断开与被测试机器的连接"""
-    global operation_instance, is_connected
+    global multi_machine_operation, test_server, is_connected
     
     try:
-        if operation_instance:
-            operation_instance.close()
-            operation_instance = None
+        if multi_machine_operation:
+            multi_machine_operation.close()
+            multi_machine_operation = None
         
         is_connected = False
         logger.info("已断开连接")
@@ -244,7 +274,7 @@ async def click_element(request: ElementOperationRequest):
     
     try:
         logger.info(f"点击元素: {request.path}")
-        result = operation_instance.click_element(request.path, request.roles)
+        result = multi_machine_operation.click_element(request.path, request.roles)
         
         return create_operation_result(
             success=True,
@@ -266,7 +296,7 @@ async def click_image(request: ImageOperationRequest):
     
     try:
         logger.info(f"点击图片: {request.imagePath}")
-        result = operation_instance.click_image(request.imagePath, request.threshold)
+        result = multi_machine_operation.click_image(request.imagePath, request.threshold)
         
         return create_operation_result(
             success=result.get("success", False),
@@ -289,7 +319,7 @@ async def drag_to(request: DragRequest):
     
     try:
         logger.info(f"拖拽操作: ({request.startX}, {request.startY}) -> ({request.endX}, {request.endY})")
-        result = operation_instance.drag_to(request.startX, request.startY, request.endX, request.endY)
+        result = multi_machine_operation.drag_to(request.startX, request.startY, request.endX, request.endY)
         
         return create_operation_result(
             success=True,
@@ -311,7 +341,7 @@ async def input_text(request: TextInputRequest):
     
     try:
         logger.info(f"输入文本: {request.text}")
-        result = operation_instance.input_text(request.text, request.elementPath)
+        result = multi_machine_operation.input_text(request.text, request.elementPath)
         
         return create_operation_result(
             success=True,
@@ -333,7 +363,7 @@ async def hotkey(request: HotkeyRequest):
     
     try:
         logger.info(f"快捷键操作: {request.keys}")
-        result = operation_instance.hotkey(request.keys)
+        result = multi_machine_operation.hotkey(request.keys)
         
         return create_operation_result(
             success=result.get("success", False),
@@ -357,7 +387,7 @@ async def get_element_info(path: str, roles: Optional[str] = None):
     try:
         logger.info(f"获取元素信息: {path}")
         role_list = roles.split(",") if roles else None
-        result = operation_instance.get_location(path, role_list)
+        result = multi_machine_operation.get_location(path, role_list)
         
         return create_operation_result(
             success=True,
@@ -379,7 +409,7 @@ async def find_image(request: ImageOperationRequest):
     
     try:
         logger.info(f"查找图片: {request.imagePath}")
-        result = operation_instance.find_image(request.imagePath, request.threshold)
+        result = multi_machine_operation.find_image(request.imagePath, request.threshold)
         
         return create_operation_result(
             success=result.get("success", False),
@@ -393,6 +423,164 @@ async def find_image(request: ImageOperationRequest):
             success=False,
             error=str(e),
             message="查找图片失败"
+        )
+
+# 多机器多应用管理API
+@app.get("/machines")
+async def get_machines():
+    """获取可用机器列表"""
+    check_connection()
+    
+    try:
+        machines = multi_machine_operation.get_available_machines()
+        machine_list = []
+        
+        for machine_id in machines:
+            machine_info = {
+                "id": machine_id,
+                "address": f"机器_{machine_id}",
+                "status": "connected",
+                "apps": []
+            }
+            machine_list.append(machine_info)
+        
+        return create_operation_result(
+            success=True,
+            data={"machines": machine_list},
+            message="获取机器列表成功"
+        )
+    except Exception as e:
+        logger.error(f"获取机器列表失败: {str(e)}")
+        return create_operation_result(
+            success=False,
+            error=str(e),
+            message="获取机器列表失败"
+        )
+
+@app.get("/apps")
+async def get_apps(machine_id: Optional[str] = None):
+    """获取可用应用列表"""
+    check_connection()
+    
+    try:
+        apps = multi_machine_operation.get_available_apps(machine_id)
+        app_list = []
+        
+        for app in apps:
+            app_info = {
+                "id": f"{app['machine_id']}:{app['name']}",
+                "name": app['name'],
+                "machine_id": app['machine_id'],
+                "status": "running",
+                "region": app.get('region')
+            }
+            app_list.append(app_info)
+        
+        return create_operation_result(
+            success=True,
+            data={"apps": app_list},
+            message="获取应用列表成功"
+        )
+    except Exception as e:
+        logger.error(f"获取应用列表失败: {str(e)}")
+        return create_operation_result(
+            success=False,
+            error=str(e),
+            message="获取应用列表失败"
+        )
+
+@app.post("/set-target")
+async def set_target(request: MachineAppTargetRequest):
+    """设置当前操作的目标机器和应用"""
+    check_connection()
+    
+    try:
+        success = multi_machine_operation.set_target(request.machine_id, request.app_name)
+        
+        if success:
+            global current_machine_id, current_app_name
+            current_machine_id = request.machine_id
+            current_app_name = request.app_name
+            
+            logger.info(f"设置目标成功: 机器 {request.machine_id}, 应用 {request.app_name}")
+            return create_operation_result(
+                success=True,
+                data={
+                    "machine_id": request.machine_id,
+                    "app_name": request.app_name
+                },
+                message="设置目标成功"
+            )
+        else:
+            return create_operation_result(
+                success=False,
+                error="设置目标失败",
+                message="设置目标失败"
+            )
+    except Exception as e:
+        logger.error(f"设置目标失败: {str(e)}")
+        return create_operation_result(
+            success=False,
+            error=str(e),
+            message="设置目标失败"
+        )
+
+@app.get("/current-target")
+async def get_current_target():
+    """获取当前操作目标"""
+    check_connection()
+    
+    try:
+        return create_operation_result(
+            success=True,
+            data={
+                "machine_id": current_machine_id,
+                "app_name": current_app_name
+            },
+            message="获取当前目标成功"
+        )
+    except Exception as e:
+        logger.error(f"获取当前目标失败: {str(e)}")
+        return create_operation_result(
+            success=False,
+            error=str(e),
+            message="获取当前目标失败"
+        )
+
+@app.post("/screenshot")
+async def get_screenshot(region: Optional[str] = None):
+    """获取当前目标应用的截图"""
+    check_connection()
+    
+    try:
+        # 解析区域参数
+        region_list = None
+        if region:
+            try:
+                region_list = [int(x) for x in region.split(',')]
+                if len(region_list) != 4:
+                    raise ValueError("区域参数格式错误")
+            except ValueError:
+                return create_operation_result(
+                    success=False,
+                    error="区域参数格式错误，应为 x,y,width,height",
+                    message="区域参数格式错误"
+                )
+        
+        result = multi_machine_operation.get_screenshot(region_list)
+        
+        return create_operation_result(
+            success=result.get("success", False),
+            data=result.get("data"),
+            error=result.get("error"),
+            message="获取截图成功" if result.get("success") else "获取截图失败"
+        )
+    except Exception as e:
+        logger.error(f"获取截图失败: {str(e)}")
+        return create_operation_result(
+            success=False,
+            error=str(e),
+            message="获取截图失败"
         )
 
 # 脚本管理API

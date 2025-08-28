@@ -4,15 +4,15 @@
     <el-card class="connection-panel" shadow="hover">
       <template #header>
         <div class="card-header">
-          <span>连接控制</span>
+          <span>测试服务器连接</span>
           <el-tag :type="isConnected ? 'success' : 'danger'" size="small">
             {{ isConnected ? '已连接' : '未连接' }}
           </el-tag>
         </div>
       </template>
       
-      <el-form :model="connectionForm" label-width="80px" inline>
-        <el-form-item label="目标主机">
+      <el-form :model="connectionForm" label-width="100px" inline>
+        <el-form-item label="测试服务器地址">
           <el-input 
             v-model="connectionForm.host" 
             placeholder="192.168.1.100"
@@ -47,8 +47,91 @@
       </el-form>
     </el-card>
 
+    <!-- 多机器多应用管理面板 -->
+    <el-card v-if="isConnected" class="target-panel" shadow="hover">
+      <template #header>
+        <div class="card-header">
+          <span>目标机器和应用</span>
+          <el-tag v-if="currentTarget" type="info" size="small">
+            当前: {{ currentTarget.machine_id }} / {{ currentTarget.app_name }}
+          </el-tag>
+        </div>
+      </template>
+      
+      <el-row :gutter="20">
+        <!-- 机器选择 -->
+        <el-col :span="8">
+          <el-form label-width="80px">
+            <el-form-item label="选择机器">
+              <el-select 
+                v-model="selectedMachineId" 
+                placeholder="选择目标机器"
+                @change="handleMachineChange"
+                :loading="loadingMachines"
+                style="width: 100%"
+              >
+                <el-option 
+                  v-for="machine in availableMachines" 
+                  :key="machine.id"
+                  :label="machine.address"
+                  :value="machine.id"
+                />
+              </el-select>
+            </el-form-item>
+          </el-form>
+        </el-col>
+        
+        <!-- 应用选择 -->
+        <el-col :span="8">
+          <el-form label-width="80px">
+            <el-form-item label="选择应用">
+              <el-select 
+                v-model="selectedAppName" 
+                placeholder="选择目标应用"
+                @change="handleAppChange"
+                :loading="loadingApps"
+                :disabled="!selectedMachineId"
+                style="width: 100%"
+              >
+                <el-option 
+                  v-for="app in availableApps" 
+                  :key="app.id"
+                  :label="app.name"
+                  :value="app.name"
+                />
+              </el-select>
+            </el-form-item>
+          </el-form>
+        </el-col>
+        
+        <!-- 设置目标按钮 -->
+        <el-col :span="8">
+          <el-form-item>
+            <el-button 
+              type="primary" 
+              @click="handleSetTarget"
+              :disabled="!selectedMachineId || !selectedAppName"
+              style="margin-top: 32px"
+            >
+              设置目标
+            </el-button>
+          </el-form-item>
+        </el-col>
+      </el-row>
+      
+      <!-- 刷新按钮 -->
+      <div class="refresh-actions">
+        <el-button @click="refreshMachines" :loading="loadingMachines">
+          刷新机器列表
+        </el-button>
+        <el-button @click="refreshApps" :loading="loadingApps" :disabled="!selectedMachineId">
+          刷新应用列表
+        </el-button>
+      </div>
+    </el-card>
+
     <!-- 操作控制面板 -->
-    <el-row :gutter="20" class="operation-panels">
+    <el-row v-if="isTargetSet" :gutter="20" class="operation-panels">
       <!-- 元素操作面板 -->
       <el-col :span="12">
         <el-card class="operation-panel" shadow="hover">
@@ -61,7 +144,6 @@
               <el-input 
                 v-model="elementForm.path" 
                 placeholder="菜单/文件/新建"
-                :disabled="!isConnected"
               />
             </el-form-item>
             <el-form-item label="角色名称">
@@ -69,7 +151,6 @@
                 v-model="elementForm.roles" 
                 multiple 
                 placeholder="选择角色"
-                :disabled="!isConnected"
                 style="width: 100%"
               >
                 <el-option label="push button" value="push button" />
@@ -84,19 +165,16 @@
                 <el-button 
                   type="primary" 
                   @click="handleClickElement"
-                  :disabled="!isConnected"
                 >
                   点击
                 </el-button>
                 <el-button 
                   @click="handleRightClickElement"
-                  :disabled="!isConnected"
                 >
                   右键
                 </el-button>
                 <el-button 
                   @click="handleDoubleClickElement"
-                  :disabled="!isConnected"
                 >
                   双击
                 </el-button>
@@ -116,28 +194,89 @@
           <el-form :model="imageForm" label-width="80px">
             <el-form-item label="图片路径">
               <el-input 
-                v-model="imageForm.path" 
-                placeholder="qgis_image/button.png"
-                :disabled="!isConnected"
+                v-model="imageForm.imagePath" 
+                placeholder="/path/to/image.png"
               />
             </el-form-item>
             <el-form-item label="匹配阈值">
               <el-slider 
                 v-model="imageForm.threshold" 
                 :min="0.1" 
-                :max="1" 
+                :max="1.0" 
                 :step="0.1"
-                :disabled="!isConnected"
                 show-input
               />
             </el-form-item>
             <el-form-item>
-              <el-button 
-                type="primary" 
-                @click="handleClickImage"
-                :disabled="!isConnected"
-              >
-                点击图片
+              <el-button-group>
+                <el-button 
+                  type="primary" 
+                  @click="handleClickImage"
+                >
+                  点击图片
+                </el-button>
+                <el-button 
+                  @click="handleFindImage"
+                >
+                  查找图片
+                </el-button>
+              </el-button-group>
+            </el-form-item>
+          </el-form>
+        </el-card>
+      </el-col>
+    </el-row>
+
+    <!-- 其他操作面板 -->
+    <el-row v-if="isTargetSet" :gutter="20" class="operation-panels">
+      <!-- 拖拽操作面板 -->
+      <el-col :span="12">
+        <el-card class="operation-panel" shadow="hover">
+          <template #header>
+            <span>拖拽操作</span>
+          </template>
+          
+          <el-form :model="dragForm" label-width="80px">
+            <el-form-item label="起始坐标">
+              <el-input-number v-model="dragForm.startX" placeholder="X" style="width: 80px" />
+              <el-input-number v-model="dragForm.startY" placeholder="Y" style="width: 80px" />
+            </el-form-item>
+            <el-form-item label="结束坐标">
+              <el-input-number v-model="dragForm.endX" placeholder="X" style="width: 80px" />
+              <el-input-number v-model="dragForm.endY" placeholder="Y" style="width: 80px" />
+            </el-form-item>
+            <el-form-item>
+              <el-button type="primary" @click="handleDragTo">
+                执行拖拽
+              </el-button>
+            </el-form-item>
+          </el-form>
+        </el-card>
+      </el-col>
+
+      <!-- 文本输入面板 -->
+      <el-col :span="12">
+        <el-card class="operation-panel" shadow="hover">
+          <template #header>
+            <span>文本输入</span>
+          </template>
+          
+          <el-form :model="textForm" label-width="80px">
+            <el-form-item label="输入文本">
+              <el-input 
+                v-model="textForm.text" 
+                placeholder="要输入的文本"
+              />
+            </el-form-item>
+            <el-form-item label="元素路径">
+              <el-input 
+                v-model="textForm.elementPath" 
+                placeholder="目标元素路径（可选）"
+              />
+            </el-form-item>
+            <el-form-item>
+              <el-button type="primary" @click="handleInputText">
+                输入文本
               </el-button>
             </el-form-item>
           </el-form>
@@ -145,175 +284,131 @@
       </el-col>
     </el-row>
 
-    <!-- 拖拽操作面板 -->
-    <el-card class="drag-panel" shadow="hover">
-      <template #header>
-        <span>拖拽操作</span>
-      </template>
-      
-      <el-row :gutter="20">
-        <el-col :span="6">
-          <el-form :model="dragForm" label-width="80px">
-            <el-form-item label="起点X">
-              <el-input-number 
-                v-model="dragForm.startX" 
-                :min="0"
-                :disabled="!isConnected"
-              />
+    <!-- 快捷键操作面板 -->
+    <el-row v-if="isTargetSet" :gutter="20" class="operation-panels">
+      <el-col :span="12">
+        <el-card class="operation-panel" shadow="hover">
+          <template #header>
+            <span>快捷键操作</span>
+          </template>
+          
+          <el-form :model="hotkeyForm" label-width="80px">
+            <el-form-item label="按键组合">
+              <el-select 
+                v-model="hotkeyForm.keys" 
+                multiple 
+                placeholder="选择按键"
+                style="width: 100%"
+              >
+                <el-option label="Ctrl" value="Ctrl" />
+                <el-option label="Alt" value="Alt" />
+                <el-option label="Shift" value="Shift" />
+                <el-option label="a" value="a" />
+                <el-option label="c" value="c" />
+                <el-option label="v" value="v" />
+                <el-option label="x" value="x" />
+                <el-option label="z" value="z" />
+                <el-option label="Enter" value="Enter" />
+                <el-option label="Tab" value="Tab" />
+                <el-option label="Escape" value="Escape" />
+              </el-select>
+            </el-form-item>
+            <el-form-item>
+              <el-button type="primary" @click="handleHotkey">
+                执行快捷键
+              </el-button>
             </el-form-item>
           </el-form>
-        </el-col>
-        <el-col :span="6">
-          <el-form :model="dragForm" label-width="80px">
-            <el-form-item label="起点Y">
-              <el-input-number 
-                v-model="dragForm.startY" 
-                :min="0"
-                :disabled="!isConnected"
-              />
-            </el-form-item>
-          </el-form>
-        </el-col>
-        <el-col :span="6">
-          <el-form :model="dragForm" label-width="80px">
-            <el-form-item label="终点X">
-              <el-input-number 
-                v-model="dragForm.endX" 
-                :min="0"
-                :disabled="!isConnected"
-              />
-            </el-form-item>
-          </el-form>
-        </el-col>
-        <el-col :span="6">
-          <el-form :model="dragForm" label-width="80px">
-            <el-form-item label="终点Y">
-              <el-input-number 
-                v-model="dragForm.endY" 
-                :min="0"
-                :disabled="!isConnected"
-              />
-            </el-form-item>
-          </el-form>
-        </el-col>
-      </el-row>
-      
-      <el-form-item>
-        <el-button 
-          type="primary" 
-          @click="handleDragTo"
-          :disabled="!isConnected"
-        >
-          执行拖拽
-        </el-button>
-      </el-form-item>
-    </el-card>
+        </el-card>
+      </el-col>
 
-    <!-- 文本输入面板 -->
-    <el-card class="text-panel" shadow="hover">
-      <template #header>
-        <span>文本输入</span>
-      </template>
-      
-      <el-form :model="textForm" label-width="80px" inline>
-        <el-form-item label="文本内容">
-          <el-input 
-            v-model="textForm.content" 
-            placeholder="输入要输入的文本"
-            style="width: 300px"
-            :disabled="!isConnected"
-          />
-        </el-form-item>
-        <el-form-item label="目标元素">
-          <el-input 
-            v-model="textForm.elementPath" 
-            placeholder="可选：指定目标元素路径"
-            style="width: 300px"
-            :disabled="!isConnected"
-          />
-        </el-form-item>
-        <el-form-item>
-          <el-button 
-            type="primary" 
-            @click="handleInputText"
-            :disabled="!isConnected"
-          >
-            输入文本
-          </el-button>
-        </el-form-item>
-      </el-form>
-    </el-card>
+      <!-- 截图面板 -->
+      <el-col :span="12">
+        <el-card class="operation-panel" shadow="hover">
+          <template #header>
+            <span>截图功能</span>
+          </template>
+          
+          <el-form label-width="80px">
+            <el-form-item label="截图区域">
+              <el-input 
+                v-model="screenshotRegion" 
+                placeholder="x,y,width,height（可选）"
+              />
+            </el-form-item>
+            <el-form-item>
+              <el-button type="primary" @click="handleTakeScreenshot">
+                获取截图
+              </el-button>
+            </el-form-item>
+          </el-form>
+          
+          <!-- 截图显示 -->
+          <div v-if="currentScreenshot" class="screenshot-display">
+            <img 
+              :src="`data:image/png;base64,${currentScreenshot.screenshot}`" 
+              :alt="`截图 - ${currentScreenshot.app_name}`"
+              style="max-width: 100%; max-height: 200px; border: 1px solid #ddd;"
+            />
+            <p class="screenshot-info">
+              尺寸: {{ currentScreenshot.size.width }} x {{ currentScreenshot.size.height }}
+            </p>
+          </div>
+        </el-card>
+      </el-col>
+    </el-row>
 
-    <!-- 操作历史 -->
-    <el-card class="history-panel" shadow="hover">
+    <!-- 操作日志面板 -->
+    <el-card v-if="isConnected" class="log-panel" shadow="hover">
       <template #header>
         <div class="card-header">
-          <span>操作历史</span>
-          <div>
-            <el-tag type="info" size="small">
-              成功率: {{ successRate }}%
-            </el-tag>
-            <el-button 
-              type="text" 
-              size="small" 
-              @click="clearHistory"
-              style="margin-left: 10px"
-            >
-              清空历史
-            </el-button>
-          </div>
+          <span>操作日志</span>
+          <el-button size="small" @click="clearLogs">清空日志</el-button>
         </div>
       </template>
       
-      <el-table :data="recentOperations" style="width: 100%" size="small">
-        <el-table-column prop="type" label="操作类型" width="120" />
-        <el-table-column prop="params" label="参数" show-overflow-tooltip />
-        <el-table-column prop="result.success" label="结果" width="80">
-          <template #default="{ row }">
-            <el-tag :type="row.result.success ? 'success' : 'danger'" size="small">
-              {{ row.result.success ? '成功' : '失败' }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="timestamp" label="时间" width="180">
-          <template #default="{ row }">
-            {{ new Date(row.timestamp).toLocaleString() }}
-          </template>
-        </el-table-column>
-      </el-table>
+      <div class="log-content">
+        <div 
+          v-for="(log, index) in operationLogs" 
+          :key="index"
+          class="log-entry"
+        >
+          {{ log }}
+        </div>
+      </div>
     </el-card>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useOperationStore } from '@/stores/operation'
+import type { MachineAppTarget } from '@/api/types'
 
-const operationStore = useOperationStore()
+const store = useOperationStore()
 
 // 响应式数据
-const connecting = ref(false)
-
-// 连接表单
 const connectionForm = ref({
   host: 'localhost',
-  port: 8888
+  port: 8889
 })
 
-// 元素操作表单
+const selectedMachineId = ref('')
+const selectedAppName = ref('')
+const screenshotRegion = ref('')
+
+// 表单数据
 const elementForm = ref({
   path: '',
   roles: [] as string[]
 })
 
-// 图片操作表单
 const imageForm = ref({
-  path: '',
+  imagePath: '',
   threshold: 0.8
 })
 
-// 拖拽操作表单
 const dragForm = ref({
   startX: 0,
   startY: 0,
@@ -321,41 +416,85 @@ const dragForm = ref({
   endY: 100
 })
 
-// 文本输入表单
 const textForm = ref({
-  content: '',
+  text: '',
   elementPath: ''
 })
 
+const hotkeyForm = ref({
+  keys: [] as string[]
+})
+
 // 计算属性
-const isConnected = computed(() => operationStore.isConnected)
-const recentOperations = computed(() => operationStore.recentOperations)
-const successRate = computed(() => operationStore.successRate)
+const isConnected = computed(() => store.isConnected)
+const connecting = computed(() => store.connecting)
+const currentTarget = computed(() => store.currentTarget)
+const isTargetSet = computed(() => store.isTargetSet)
+const availableMachines = computed(() => store.availableMachines)
+const availableApps = computed(() => store.availableApps)
+const loadingMachines = computed(() => store.loadingMachines)
+const loadingApps = computed(() => store.loadingApps)
+const operationLogs = computed(() => store.operationLogs)
+const currentScreenshot = computed(() => store.currentScreenshot)
 
 // 方法
 const handleConnect = async () => {
-  if (!connectionForm.value.host || !connectionForm.value.port) {
-    ElMessage.warning('请输入主机地址和端口')
-    return
-  }
-
-  connecting.value = true
-  try {
-    await operationStore.connect(connectionForm.value.host, connectionForm.value.port)
+  const success = await store.connect(connectionForm.value)
+  if (success) {
     ElMessage.success('连接成功')
-  } catch (error) {
-    ElMessage.error(`连接失败: ${error instanceof Error ? error.message : '未知错误'}`)
-  } finally {
-    connecting.value = false
+  } else {
+    ElMessage.error('连接失败')
   }
 }
 
 const handleDisconnect = async () => {
-  try {
-    await operationStore.disconnect()
-    ElMessage.success('断开连接成功')
-  } catch (error) {
-    ElMessage.error(`断开连接失败: ${error instanceof Error ? error.message : '未知错误'}`)
+  const success = await store.disconnect()
+  if (success) {
+    ElMessage.success('已断开连接')
+    selectedMachineId.value = ''
+    selectedAppName.value = ''
+  } else {
+    ElMessage.error('断开连接失败')
+  }
+}
+
+const handleMachineChange = async () => {
+  selectedAppName.value = ''
+  if (selectedMachineId.value) {
+    await store.refreshApps(selectedMachineId.value)
+  }
+}
+
+const handleAppChange = () => {
+  // 应用选择改变时的处理
+}
+
+const handleSetTarget = async () => {
+  if (!selectedMachineId.value || !selectedAppName.value) {
+    ElMessage.warning('请选择机器和应用')
+    return
+  }
+
+  const target: MachineAppTarget = {
+    machine_id: selectedMachineId.value,
+    app_name: selectedAppName.value
+  }
+
+  const success = await store.setCurrentTarget(target)
+  if (success) {
+    ElMessage.success('设置目标成功')
+  } else {
+    ElMessage.error('设置目标失败')
+  }
+}
+
+const refreshMachines = async () => {
+  await store.refreshMachines()
+}
+
+const refreshApps = async () => {
+  if (selectedMachineId.value) {
+    await store.refreshApps(selectedMachineId.value)
   }
 }
 
@@ -365,123 +504,168 @@ const handleClickElement = async () => {
     return
   }
 
-  try {
-    await operationStore.clickElement(elementForm.value.path, elementForm.value.roles)
+  const success = await store.performClickElement({
+    path: elementForm.value.path,
+    roles: elementForm.value.roles
+  })
+
+  if (success) {
     ElMessage.success('点击元素成功')
-  } catch (error) {
-    ElMessage.error(`点击元素失败: ${error instanceof Error ? error.message : '未知错误'}`)
   }
 }
 
 const handleRightClickElement = async () => {
-  if (!elementForm.value.path) {
-    ElMessage.warning('请输入元素路径')
-    return
-  }
-
-  try {
-    await operationStore.rightClickElement(elementForm.value.path, elementForm.value.roles)
-    ElMessage.success('右键点击元素成功')
-  } catch (error) {
-    ElMessage.error(`右键点击元素失败: ${error instanceof Error ? error.message : '未知错误'}`)
-  }
+  // 实现右键点击逻辑
+  ElMessage.info('右键点击功能待实现')
 }
 
 const handleDoubleClickElement = async () => {
-  if (!elementForm.value.path) {
-    ElMessage.warning('请输入元素路径')
-    return
-  }
-
-  try {
-    await operationStore.doubleClickElement(elementForm.value.path, elementForm.value.roles)
-    ElMessage.success('双击元素成功')
-  } catch (error) {
-    ElMessage.error(`双击元素失败: ${error instanceof Error ? error.message : '未知错误'}`)
-  }
+  // 实现双击逻辑
+  ElMessage.info('双击功能待实现')
 }
 
 const handleClickImage = async () => {
-  if (!imageForm.value.path) {
+  if (!imageForm.value.imagePath) {
     ElMessage.warning('请输入图片路径')
     return
   }
 
-  try {
-    await operationStore.clickImage(imageForm.value.path, imageForm.value.threshold)
+  const success = await store.performClickImage({
+    imagePath: imageForm.value.imagePath,
+    threshold: imageForm.value.threshold
+  })
+
+  if (success) {
     ElMessage.success('点击图片成功')
-  } catch (error) {
-    ElMessage.error(`点击图片失败: ${error instanceof Error ? error.message : '未知错误'}`)
+  }
+}
+
+const handleFindImage = async () => {
+  if (!imageForm.value.imagePath) {
+    ElMessage.warning('请输入图片路径')
+    return
+  }
+
+  const result = await store.performFindImage({
+    imagePath: imageForm.value.imagePath,
+    threshold: imageForm.value.threshold
+  })
+
+  if (result) {
+    ElMessage.success('查找图片成功')
   }
 }
 
 const handleDragTo = async () => {
-  try {
-    await operationStore.dragTo(
-      dragForm.value.startX,
-      dragForm.value.startY,
-      dragForm.value.endX,
-      dragForm.value.endY
-    )
+  const success = await store.performDragTo(dragForm.value)
+  if (success) {
     ElMessage.success('拖拽操作成功')
-  } catch (error) {
-    ElMessage.error(`拖拽操作失败: ${error instanceof Error ? error.message : '未知错误'}`)
   }
 }
 
 const handleInputText = async () => {
-  if (!textForm.value.content) {
-    ElMessage.warning('请输入文本内容')
+  if (!textForm.value.text) {
+    ElMessage.warning('请输入要输入的文本')
     return
   }
 
-  try {
-    await operationStore.inputText(textForm.value.content, textForm.value.elementPath)
+  const success = await store.performInputText({
+    text: textForm.value.text,
+    elementPath: textForm.value.elementPath || undefined
+  })
+
+  if (success) {
     ElMessage.success('文本输入成功')
-  } catch (error) {
-    ElMessage.error(`文本输入失败: ${error instanceof Error ? error.message : '未知错误'}`)
   }
 }
 
-const clearHistory = () => {
-  operationStore.clearHistory()
-  ElMessage.success('操作历史已清空')
+const handleHotkey = async () => {
+  if (hotkeyForm.value.keys.length === 0) {
+    ElMessage.warning('请选择按键组合')
+    return
+  }
+
+  const success = await store.performHotkey({
+    keys: hotkeyForm.value.keys
+  })
+
+  if (success) {
+    ElMessage.success('快捷键操作成功')
+  }
 }
+
+const handleTakeScreenshot = async () => {
+  const result = await store.takeScreenshot(screenshotRegion.value || undefined)
+  if (result) {
+    ElMessage.success('截图成功')
+  }
+}
+
+const clearLogs = () => {
+  store.clearLogs()
+}
+
+// 生命周期
+onMounted(async () => {
+  await store.initialize()
+})
 </script>
 
-<style lang="scss" scoped>
+<style scoped lang="scss">
 .operation-page {
-  .connection-panel {
+  padding: 20px;
+  
+  .connection-panel,
+  .target-panel,
+  .operation-panel,
+  .log-panel {
     margin-bottom: 20px;
   }
-
-  .operation-panels {
-    margin-bottom: 20px;
-  }
-
-  .operation-panel {
-    height: 100%;
-  }
-
-  .drag-panel,
-  .text-panel,
-  .history-panel {
-    margin-bottom: 20px;
-  }
-
+  
   .card-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
   }
-
-  .el-form-item {
-    margin-bottom: 15px;
-  }
-
-  .el-button-group {
+  
+  .refresh-actions {
+    margin-top: 15px;
+    text-align: center;
+    
     .el-button {
-      margin-right: 0;
+      margin: 0 10px;
+    }
+  }
+  
+  .operation-panels {
+    margin-bottom: 20px;
+  }
+  
+  .log-content {
+    max-height: 300px;
+    overflow-y: auto;
+    border: 1px solid #ebeef5;
+    border-radius: 4px;
+    padding: 10px;
+    background-color: #fafafa;
+    
+    .log-entry {
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+      line-height: 1.5;
+      margin-bottom: 5px;
+      word-break: break-all;
+    }
+  }
+  
+  .screenshot-display {
+    margin-top: 15px;
+    text-align: center;
+    
+    .screenshot-info {
+      margin-top: 10px;
+      font-size: 12px;
+      color: #666;
     }
   }
 }

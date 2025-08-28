@@ -1,95 +1,92 @@
-// 操作结果类型
-export interface OperationResult {
-  success: boolean
-  data?: any
-  error?: string
+// 基础响应类型
+export interface ApiResponse<T = any> {
+  success: boolean;
+  data?: T;
+  error?: string;
+  message?: string;
 }
 
-// 连接状态类型
-export type ConnectionStatus = 'connected' | 'disconnected' | 'error' | 'connecting'
+// 连接相关类型
+export interface TestServerConnection {
+  host: string;
+  port: number;
+}
 
-// 元素信息类型
-export interface ElementInfo {
-  position: {
-    x: number
-    y: number
-  }
+export interface ConnectionStatus {
+  connected: boolean;
+  host?: string;
+  port?: number;
+}
+
+// 多机器多应用类型
+export interface MachineInfo {
+  id: string;
+  address: string;
+  status: string;
+  apps: string[];
+}
+
+export interface AppInfo {
+  id: string;
+  name: string;
+  machine_id: string;
+  status: string;
+  region?: number[];
+}
+
+export interface MachineAppTarget {
+  machine_id: string;
+  app_name: string;
+}
+
+export interface CurrentTarget {
+  machine_id: string;
+  app_name: string;
+}
+
+// 元素操作类型
+export interface ElementOperation {
+  path: string;
+  roles?: string[];
+}
+
+export interface ImageOperation {
+  imagePath: string;
+  threshold: number;
+}
+
+export interface DragOperation {
+  startX: number;
+  startY: number;
+  endX: number;
+  endY: number;
+}
+
+export interface TextInput {
+  text: string;
+  elementPath?: string;
+}
+
+export interface HotkeyOperation {
+  keys: string[];
+}
+
+// 截图类型
+export interface ScreenshotRequest {
+  region?: string; // "x,y,width,height" 格式
+}
+
+export interface ScreenshotData {
+  screenshot: string; // base64编码的图片数据
   size: {
-    width: number
-    height: number
-  }
-  center_x: number
-  center_y: number
-  name?: string
-  role?: string
-  description?: string
+    width: number;
+    height: number;
+  };
+  machine_id: string;
+  app_name: string;
 }
 
-// 日志消息类型
-export interface LogMessage {
-  id: string
-  level: 'info' | 'warning' | 'error' | 'success'
-  message: string
-  timestamp: number
-  details?: any
-}
-
-// 截图信息类型
-export interface ScreenshotInfo {
-  data: string // base64编码的图片数据
-  width: number
-  height: number
-  timestamp: number
-}
-
-// 测试脚本类型
-export interface TestScript {
-  id: string
-  name: string
-  description?: string
-  operations: ScriptOperation[]
-  created_at: number
-  updated_at: number
-}
-
-// 脚本操作类型
-export interface ScriptOperation {
-  id: string
-  type: 'clickElement' | 'clickImage' | 'dragTo' | 'inputText' | 'hotkey' | 'wait'
-  params: any
-  delay?: number // 操作前延迟（毫秒）
-}
-
-// 连接配置类型
-export interface ConnectionConfig {
-  host: string
-  port: number
-  timeout?: number
-  retryCount?: number
-}
-
-// 操作配置类型
-export interface OperationConfig {
-  defaultDelay: number
-  clickDelay: number
-  dragDelay: number
-  imageThreshold: number
-  maxRetries: number
-}
-
-// 系统设置类型
-export interface SystemSettings {
-  connection: ConnectionConfig
-  operation: OperationConfig
-  ui: {
-    theme: 'light' | 'dark'
-    language: 'zh-CN' | 'en-US'
-    autoRefresh: boolean
-    refreshInterval: number
-  }
-}
-
-// 脚本管理相关类型
+// 脚本管理类型
 export interface ScriptInfo {
   id: string;
   name: string;
@@ -97,30 +94,40 @@ export interface ScriptInfo {
   content: string;
   createdAt: string;
   updatedAt: string;
-  status: 'idle' | 'running' | 'completed' | 'failed';
+  status: string;
   lastRunTime?: string;
   runCount: number;
+  target_machine_id?: string;
+  target_app_name?: string;
 }
 
 export interface CreateScriptRequest {
   name: string;
   description?: string;
   content: string;
+  target_machine_id?: string;
+  target_app_name?: string;
 }
 
 export interface UpdateScriptRequest {
   name?: string;
   description?: string;
   content?: string;
+  target_machine_id?: string;
+  target_app_name?: string;
 }
 
 export interface ScriptRunResult {
   success: boolean;
   output?: string;
   error?: string;
-  executionTime?: number;
+  executionTime: number;
 }
 
-export interface ImportScriptRequest {
-  file: File;
+// 操作结果类型
+export interface OperationResult {
+  success: boolean;
+  data?: any;
+  error?: string;
+  message?: string;
 } 
