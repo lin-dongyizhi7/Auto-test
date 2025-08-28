@@ -37,8 +37,8 @@
               <el-icon><DataAnalysis /></el-icon>
             </div>
             <div class="stat-info">
-              <div class="stat-value">{{ successRate }}%</div>
-              <div class="stat-label">成功率</div>
+              <div class="stat-value">{{ availableMachines }}</div>
+              <div class="stat-label">可用机器</div>
             </div>
           </div>
         </el-card>
@@ -82,7 +82,7 @@
               type="success" 
               size="large" 
               @click="handleTakeScreenshot"
-              :disabled="!isConnected"
+              :disabled="!isTargetSet"
             >
               <el-icon><Camera /></el-icon>
               截图
@@ -107,11 +107,11 @@
           </template>
           
           <el-descriptions :column="1" border>
-            <el-descriptions-item label="目标主机">
-              {{ targetHost }}
+            <el-descriptions-item label="测试服务器">
+              {{ testServerInfo }}
             </el-descriptions-item>
-            <el-descriptions-item label="连接端口">
-              {{ targetPort }}
+            <el-descriptions-item label="当前目标">
+              {{ currentTargetInfo }}
             </el-descriptions-item>
             <el-descriptions-item label="连接状态">
               <el-tag :type="isConnected ? 'success' : 'danger'">
@@ -126,34 +126,86 @@
       </el-col>
     </el-row>
 
-    <!-- 最近操作 -->
+    <!-- 最近操作日志 -->
     <el-card class="recent-operations-card" shadow="hover">
       <template #header>
         <div class="card-header">
-          <span>最近操作</span>
+          <span>最近操作日志</span>
           <el-button type="text" @click="$router.push('/operation')">
             查看全部
           </el-button>
         </div>
       </template>
       
-      <el-table :data="recentOperations" style="width: 100%" size="small">
-        <el-table-column prop="type" label="操作类型" width="120" />
-        <el-table-column prop="params" label="参数" show-overflow-tooltip />
-        <el-table-column prop="result.success" label="结果" width="80">
-          <template #default="{ row }">
-            <el-tag :type="row.result.success ? 'success' : 'danger'" size="small">
-              {{ row.result.success ? '成功' : '失败' }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="timestamp" label="时间" width="180">
-          <template #default="{ row }">
-            {{ formatTime(row.timestamp) }}
-          </template>
-        </el-table-column>
-      </el-table>
+      <div v-if="recentLogs.length === 0" class="no-logs">
+        <el-empty description="暂无操作日志" />
+      </div>
+      
+      <div v-else class="log-list">
+        <div 
+          v-for="(log, index) in recentLogs" 
+          :key="index"
+          class="log-item"
+        >
+          <div class="log-content">{{ log }}</div>
+        </div>
+      </div>
     </el-card>
+
+    <!-- 机器和应用状态 -->
+    <el-row v-if="isConnected" :gutter="20" class="status-row">
+      <el-col :span="12">
+        <el-card class="machines-card" shadow="hover">
+          <template #header>
+            <span>机器状态</span>
+          </template>
+          
+          <div v-if="machines.length === 0" class="no-machines">
+            <el-empty description="暂无可用机器" />
+          </div>
+          
+          <div v-else class="machine-list">
+            <div 
+              v-for="machine in machines" 
+              :key="machine.id"
+              class="machine-item"
+            >
+              <el-tag :type="machine.status === 'connected' ? 'success' : 'danger'" size="small">
+                {{ machine.status }}
+              </el-tag>
+              <span class="machine-name">{{ machine.address }}</span>
+              <span class="machine-apps">应用: {{ machine.apps.length }}</span>
+            </div>
+          </div>
+        </el-card>
+      </el-col>
+      
+      <el-col :span="12">
+        <el-card class="apps-card" shadow="hover">
+          <template #header>
+            <span>应用状态</span>
+          </template>
+          
+          <div v-if="apps.length === 0" class="no-apps">
+            <el-empty description="暂无可用应用" />
+          </div>
+          
+          <div v-else class="app-list">
+            <div 
+              v-for="app in apps" 
+              :key="app.id"
+              class="app-item"
+            >
+              <el-tag :type="app.status === 'running' ? 'success' : 'warning'" size="small">
+                {{ app.status }}
+              </el-tag>
+              <span class="app-name">{{ app.name }}</span>
+              <span class="app-machine">机器: {{ app.machine_id }}</span>
+            </div>
+          </div>
+        </el-card>
+      </el-col>
+    </el-row>
   </div>
 </template>
 
@@ -170,39 +222,76 @@ const startTime = ref(Date.now())
 
 // 计算属性
 const isConnected = computed(() => operationStore.isConnected)
-const targetHost = computed(() => operationStore.targetHost)
-const targetPort = computed(() => operationStore.targetPort)
-const totalOperations = computed(() => operationStore.operationHistory.length)
-const successRate = computed(() => operationStore.successRate)
-const recentOperations = computed(() => operationStore.recentOperations.slice(0, 5))
+const isTargetSet = computed(() => operationStore.isTargetSet)
+const machines = computed(() => operationStore.machines)
+const apps = computed(() => operationStore.apps)
+const operationLogs = computed(() => operationStore.operationLogs)
+
+const testServerInfo = computed(() => {
+  if (!isConnected.value) return '未连接'
+  const config = operationStore.connectionConfig
+  return `${config.host}:${config.port}`
+})
+
+const currentTargetInfo = computed(() => {
+  if (!isTargetSet.value) return '未设置'
+  const target = operationStore.currentTarget
+  return `${target?.machine_id} / ${target?.app_name}`
+})
+
+const totalOperations = computed(() => operationLogs.value.length)
+const availableMachines = computed(() => machines.value.length)
+
+const recentLogs = computed(() => {
+  return operationLogs.value.slice(-5).reverse()
+})
 
 const lastOperationTime = computed(() => {
-  if (recentOperations.value.length === 0) return '无'
-  const lastOp = recentOperations.value[0]
-  return formatTime(lastOp.timestamp)
+  if (recentLogs.value.length === 0) return '无'
+  const lastLog = recentLogs.value[0]
+  // 从日志中提取时间戳
+  const timeMatch = lastLog.match(/\[(.*?)\]/)
+  return timeMatch ? timeMatch[1] : '未知'
 })
 
 // 方法
 const handleQuickConnect = async () => {
   try {
-    await operationStore.connect('localhost', 8888)
-    ElMessage.success('快速连接成功')
+    const success = await operationStore.startServer(8889)
+    if (success) {
+      ElMessage.success('测试服务器已启动')
+    } else {
+      ElMessage.error('启动测试服务器失败')
+    }
   } catch (error) {
-    ElMessage.error(`快速连接失败: ${error instanceof Error ? error.message : '未知错误'}`)
+    ElMessage.error(`启动失败: ${error instanceof Error ? error.message : '未知错误'}`)
   }
 }
 
-const handleTakeScreenshot = () => {
-  ElMessage.info('截图功能开发中...')
+const handleTakeScreenshot = async () => {
+  try {
+    const result = await operationStore.takeScreenshot()
+    if (result) {
+      ElMessage.success('截图成功')
+    } else {
+      ElMessage.error('截图失败')
+    }
+  } catch (error) {
+    ElMessage.error(`截图失败: ${error instanceof Error ? error.message : '未知错误'}`)
+  }
 }
 
-const handleRefreshStatus = () => {
-  ElMessage.success('状态已刷新')
-}
-
-const formatTime = (timestamp: number) => {
-  const date = new Date(timestamp)
-  return date.toLocaleString()
+const handleRefreshStatus = async () => {
+  try {
+    await operationStore.refreshConnectionStatus()
+    if (isConnected.value) {
+      await operationStore.refreshMachines()
+      await operationStore.refreshCurrentTarget()
+    }
+    ElMessage.success('状态已刷新')
+  } catch (error) {
+    ElMessage.error(`刷新状态失败: ${error instanceof Error ? error.message : '未知错误'}`)
+  }
 }
 
 const updateUptime = () => {
@@ -215,13 +304,16 @@ const updateUptime = () => {
 }
 
 // 生命周期
-onMounted(() => {
+onMounted(async () => {
   // 每秒更新运行时间
   setInterval(updateUptime, 1000)
+  
+  // 初始化状态
+  await operationStore.initialize()
 })
 </script>
 
-<style lang="scss" scoped>
+<style lang="less" scoped>
 .dashboard-page {
   .stats-row {
     margin-bottom: 20px;
@@ -289,10 +381,70 @@ onMounted(() => {
   }
 
   .recent-operations-card {
+    margin-bottom: 20px;
+    
     .card-header {
       display: flex;
       justify-content: space-between;
       align-items: center;
+    }
+
+    .no-logs {
+      padding: 20px;
+      text-align: center;
+    }
+
+    .log-list {
+      .log-item {
+        padding: 8px 0;
+        border-bottom: 1px solid #f0f0f0;
+        
+        &:last-child {
+          border-bottom: none;
+        }
+        
+        .log-content {
+          font-family: 'Courier New', monospace;
+          font-size: 12px;
+          color: #606266;
+          word-break: break-all;
+        }
+      }
+    }
+  }
+
+  .status-row {
+    margin-bottom: 20px;
+  }
+
+  .machines-card, .apps-card {
+    .no-machines, .no-apps {
+      padding: 20px;
+      text-align: center;
+    }
+
+    .machine-list, .app-list {
+      .machine-item, .app-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 0;
+        border-bottom: 1px solid #f0f0f0;
+        
+        &:last-child {
+          border-bottom: none;
+        }
+        
+        .machine-name, .app-name {
+          flex: 1;
+          font-weight: 500;
+        }
+        
+        .machine-apps, .app-machine {
+          font-size: 12px;
+          color: #909399;
+        }
+      }
     }
   }
 }

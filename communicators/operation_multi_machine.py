@@ -18,25 +18,24 @@ import json
 import time
 import logging
 from typing import Dict, List, Optional, Union
-from test_communicator import SingleMachineCommunicator
+from .test_communicator import TestMachineCommunicator, EventType, Event
 
 class MultiMachineOperation:
     """
     多机器环境下的操作类，支持与多台机器和多个应用进行交互
     """
     
-    def __init__(self, test_server_host: str, test_server_port: int = 8889):
+    def __init__(self, bind_host: str = "0.0.0.0", server_port: int = 8889, retry_interval_sec: int = 3):
         """
-        初始化多机器操作类
+        初始化多机器操作类，并在本机启动测试服务器（长期监听）
         
-        :param test_server_host: 测试服务器地址
-        :param test_server_port: 测试服务器端口
+        :param bind_host: 测试服务器绑定地址
+        :param server_port: 测试服务器端口
+        :param retry_interval_sec: 启动失败后的重试间隔
         """
-        self.test_server_host = test_server_host
-        self.test_server_port = test_server_port
-        
-        # 连接到测试服务器
-        self.connector = SingleMachineCommunicator(test_server_host, test_server_port)
+        self.bind_host = bind_host
+        self.server_port = server_port
+        self.retry_interval_sec = retry_interval_sec
         
         # 存储操作指令
         self.opts = []  # 当前操作的指令序列
@@ -54,23 +53,21 @@ class MultiMachineOperation:
         self.logger = logging.getLogger(self.__class__.__name__)
         self.logger.setLevel(logging.INFO)
         
-        # 初始化连接
-        self._initialize_connection()
+        # 启动本地测试服务器（保持监听，失败重试）
+        self.server = None
+        self._start_server_with_retry()
     
-    def _initialize_connection(self) -> None:
-        """初始化与测试服务器的连接"""
-        try:
-            # 测试连接
-            response = self.connector._send_request("get_machines", {})
-            if response.get("success"):
-                machines = response["data"]["machines"]
-                self.logger.info(f"成功连接到测试服务器，发现 {len(machines)} 台机器")
-                for mid, machine in machines.items():
-                    self.logger.info(f"  - {mid}: {machine['address']} ({machine['status']})")
-            else:
-                self.logger.warning(f"连接测试服务器失败: {response.get('error')}")
-        except Exception as e:
-            self.logger.error(f"初始化连接失败: {str(e)}")
+    def _start_server_with_retry(self) -> None:
+        """在本机启动测试服务器；若端口被占用或失败则定时重试，不中断运行"""
+        while True:
+            try:
+                self.server = TestMachineCommunicator(server_host=self.bind_host, server_port=self.server_port)
+                self.server.start_server()
+                self.logger.info(f"测试服务器已启动并监听 {self.bind_host}:{self.server_port}")
+                break
+            except Exception as e:
+                self.logger.error(f"测试服务器启动失败: {str(e)}，将在{self.retry_interval_sec}s后重试…")
+                time.sleep(self.retry_interval_sec)
     
     def set_target(self, machine_id: str, app_name: str) -> bool:
         """
@@ -82,15 +79,8 @@ class MultiMachineOperation:
         """
         try:
             # 验证机器和应用是否存在
-            response = self.connector._send_request("get_apps", {})
-            if not response.get("success"):
-                self.logger.error(f"获取应用列表失败: {response.get('error')}")
-                return False
-            
-            apps = response["data"]["apps"]
             target_app_id = f"{machine_id}:{app_name}"
-            
-            if target_app_id not in apps:
+            if target_app_id not in self.server.apps:
                 self.logger.error(f"应用 {app_name} 在机器 {machine_id} 上未注册")
                 return False
             
@@ -106,10 +96,7 @@ class MultiMachineOperation:
     def get_available_machines(self) -> List[str]:
         """获取可用的机器列表"""
         try:
-            response = self.connector._send_request("get_machines", {})
-            if response.get("success"):
-                return list(response["data"]["machines"].keys())
-            return []
+            return list(self.server.machines.keys())
         except Exception as e:
             self.logger.error(f"获取机器列表失败: {str(e)}")
             return []
@@ -117,14 +104,10 @@ class MultiMachineOperation:
     def get_available_apps(self, machine_id: str = None) -> List[Dict]:
         """获取可用的应用列表"""
         try:
-            response = self.connector._send_request("get_apps", {})
-            if response.get("success"):
-                apps = response["data"]["apps"]
-                if machine_id:
-                    # 过滤指定机器的应用
-                    return [app for aid, app in apps.items() if app["machine_id"] == machine_id]
-                return list(apps.values())
-            return []
+            apps = self.server.apps
+            if machine_id:
+                return [app for aid, app in apps.items() if app["machine_id"] == machine_id]
+            return list(apps.values())
         except Exception as e:
             self.logger.error(f"获取应用列表失败: {str(e)}")
             return []
@@ -170,12 +153,12 @@ class MultiMachineOperation:
         
         self.logger.info(f"在机器 {self.current_machine_id} 的应用 {self.current_app_name} 上查找图片: {image_path}")
         
-        # 获取截图
-        response = self.connector._send_request("get_screenshot", {
-            "machine_id": self.current_machine_id,
-            "app_name": self.current_app_name,
-            "region": region
-        })
+        # 获取截图（通过本地测试服务器转发到目标机器）
+        response = self.server._forward_request_to_machine(
+            self.current_machine_id,
+            "get_screenshot",
+            {"app_name": self.current_app_name, "region": region}
+        )
         
         if not response.get("success"):
             return response
@@ -231,13 +214,16 @@ class MultiMachineOperation:
         if not self._check_target_set():
             raise ValueError("请先使用 set_target() 设置目标机器和应用")
         
-        # 调用测试服务器的get_element接口
-        response = self.connector._send_request("get_element", {
-            "machine_id": self.current_machine_id,
-            "app_name": self.current_app_name,
-            "element_path": element_path,
-            "role_name_list": role_name_list
-        })
+        # 通过本地测试服务器转发到目标机器
+        response = self.server._forward_request_to_machine(
+            self.current_machine_id,
+            "get_element",
+            {
+                "app_name": self.current_app_name,
+                "element_path": element_path,
+                "role_name_list": role_name_list,
+            }
+        )
         
         # 验证响应是否成功
         if not response.get("success", False):
@@ -475,11 +461,11 @@ class MultiMachineOperation:
             return {"success": False, "error": "未设置目标机器和应用"}
         
         try:
-            response = self.connector._send_request("exec_commands", {
-                "machine_id": self.current_machine_id,
-                "app_name": self.current_app_name,
-                "commands": commands
-            })
+            response = self.server._forward_request_to_machine(
+                self.current_machine_id,
+                "exec_commands",
+                {"app_name": self.current_app_name, "commands": commands}
+            )
             
             if response.get("success"):
                 self.logger.info(f"在机器 {self.current_machine_id} 的应用 {self.current_app_name} 上执行指令成功")
@@ -538,19 +524,21 @@ class MultiMachineOperation:
         if not self._check_target_set():
             return {"success": False, "error": "未设置目标机器和应用"}
         
-        return self.connector._send_request("get_screenshot", {
-            "machine_id": self.current_machine_id,
-            "app_name": self.current_app_name,
-            "region": region
-        })
+        return self.server._forward_request_to_machine(
+            self.current_machine_id,
+            "get_screenshot",
+            {"app_name": self.current_app_name, "region": region}
+        )
     
     def subscribe_events(self) -> Dict:
-        """订阅事件通知"""
-        return self.connector._send_request("subscribe_events", {})
+        """订阅事件通知（本地调用无客户端身份，这里返回成功并依赖事件历史查询）"""
+        self.logger.info("事件订阅在本地模式下为无操作（No-Op）")
+        return {"success": True}
     
     def unsubscribe_events(self) -> Dict:
-        """取消订阅事件通知"""
-        return self.connector._send_request("unsubscribe_events", {})
+        """取消订阅事件通知（本地模式No-Op）"""
+        self.logger.info("事件取消订阅在本地模式下为无操作（No-Op）")
+        return {"success": True}
     
     def sync_event(self, event_type: str, data: Dict) -> Dict:
         """
@@ -560,47 +548,25 @@ class MultiMachineOperation:
         :param data: 事件数据
         :return: 同步结果
         """
-        return self.connector._send_request("sync_event", {
-            "type": event_type,
-            "app_name": self.current_app_name,
-            "data": data
-        })
+        try:
+            evt = Event(
+                type=EventType(event_type) if isinstance(event_type, str) else event_type,
+                machine_id=self.current_machine_id or "controller",
+                app_name=self.current_app_name,
+                timestamp=time.time(),
+                data=data or {},
+                source_machine=self.current_machine_id or "controller",
+            )
+            self.server._publish_event(evt)
+            return {"success": True}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
     
     def close(self) -> None:
-        """关闭与测试服务器的连接"""
-        if self.connector:
-            self.connector.close()
-        self.logger.info("已关闭与测试服务器的连接")
+        """停止本地测试服务器并清理"""
+        try:
+            if getattr(self, "server", None):
+                self.server.stop_server()
+        finally:
+            self.logger.info("本地测试服务器已停止")
 
-# 使用示例
-def example_usage():
-    """使用示例"""
-    # 创建多机器操作实例
-    operation = MultiMachineOperation(
-        test_server_host="192.168.1.100",  # 测试服务器地址
-        test_server_port=8889
-    )
-    
-    try:
-        # 设置目标机器和应用
-        if operation.set_target("machine_001", "calculator"):
-            print("成功设置目标: 机器 machine_001, 应用 calculator")
-            
-            # 执行操作
-            operation.click_element("菜单/文件/新建")
-            operation.input_text("输入框", "测试文本")
-            operation.hotkey(["Ctrl", "s"])
-            
-            # 导出操作记录
-            operation.export_to_json("operations.json")
-            
-        else:
-            print("设置目标失败")
-            
-    except Exception as e:
-        print(f"操作过程中发生错误: {str(e)}")
-    finally:
-        operation.close()
-
-if __name__ == "__main__":
-    example_usage()

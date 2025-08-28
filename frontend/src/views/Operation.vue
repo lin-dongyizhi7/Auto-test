@@ -1,10 +1,10 @@
 <template>
   <div class="operation-page">
-    <!-- 连接控制面板 -->
+    <!-- 服务端测试服务器控制面板 -->
     <el-card class="connection-panel" shadow="hover">
       <template #header>
         <div class="card-header">
-          <span>测试服务器连接</span>
+          <span>测试服务器（服务端内置）</span>
           <el-tag :type="isConnected ? 'success' : 'danger'" size="small">
             {{ isConnected ? '已连接' : '未连接' }}
           </el-tag>
@@ -12,14 +12,7 @@
       </template>
       
       <el-form :model="connectionForm" label-width="100px" inline>
-        <el-form-item label="测试服务器地址">
-          <el-input 
-            v-model="connectionForm.host" 
-            placeholder="192.168.1.100"
-            :disabled="isConnected"
-          />
-        </el-form-item>
-        <el-form-item label="端口">
+        <el-form-item label="监听端口">
           <el-input-number 
             v-model="connectionForm.port" 
             :min="1" 
@@ -34,14 +27,21 @@
             @click="handleConnect"
             :loading="connecting"
           >
-            连接
+            启动测试服务器
           </el-button>
           <el-button 
             v-else
             type="danger" 
             @click="handleDisconnect"
           >
-            断开
+            停止测试服务器
+          </el-button>
+          <el-button 
+            type="success"
+            @click="openNewConnectionDialog"
+            style="margin-left: 10px;"
+          >
+            新建连接
           </el-button>
         </el-form-item>
       </el-form>
@@ -377,12 +377,38 @@
         </div>
       </div>
     </el-card>
+    <!-- 新建连接对话框 -->
+    <el-dialog
+      v-model="newConnDialogVisible"
+      title="新建连接"
+      width="520px"
+      :close-on-click-modal="false"
+    >
+      <el-form :model="newConnForm" :rules="newConnRules" ref="newConnFormRef" label-width="90px">
+        <el-form-item label="目标IP" prop="host">
+          <el-input v-model="newConnForm.host" placeholder="例如 192.168.1.101" />
+        </el-form-item>
+        <el-form-item label="端口" prop="port">
+          <el-input-number v-model="newConnForm.port" :min="1" :max="65535" />
+        </el-form-item>
+        <el-form-item label="应用名" prop="app">
+          <el-input v-model="newConnForm.app" placeholder="例如 calculator" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="newConnDialogVisible = false">取消</el-button>
+          <el-button type="primary" @click="confirmNewConnection" :loading="creatingConnection">确定</el-button>
+        </span>
+      </template>
+    </el-dialog>
+
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { useOperationStore } from '@/stores/operation'
 import type { MachineAppTarget } from '@/api/types'
 
@@ -425,6 +451,21 @@ const hotkeyForm = ref({
   keys: [] as string[]
 })
 
+// 新建连接对话框
+const newConnDialogVisible = ref(false)
+const creatingConnection = ref(false)
+const newConnFormRef = ref<FormInstance>()
+const newConnForm = ref({
+  host: '',
+  port: 8889,
+  app: ''
+})
+const newConnRules: FormRules = {
+  host: [{ required: true, message: '请输入目标IP', trigger: 'blur' }],
+  port: [{ required: true, message: '请输入端口', trigger: 'change' }],
+  app: [{ required: true, message: '请输入应用名', trigger: 'blur' }]
+}
+
 // 计算属性
 const isConnected = computed(() => store.isConnected)
 const connecting = computed(() => store.connecting)
@@ -456,6 +497,44 @@ const handleDisconnect = async () => {
   } else {
     ElMessage.error('断开连接失败')
   }
+}
+
+const openNewConnectionDialog = () => {
+  newConnDialogVisible.value = true
+}
+
+const confirmNewConnection = async () => {
+  if (!newConnFormRef.value) return
+  await newConnFormRef.value.validate(async (valid) => {
+    if (!valid) return
+    try {
+      creatingConnection.value = true
+      // 确保后端内置测试服务器已启动
+      if (!isConnected.value) {
+        const ok = await store.startServer(connectionForm.value.port)
+        if (!ok) {
+          ElMessage.error('启动测试服务器失败')
+          return
+        }
+      }
+
+      // 依据输入构造 machine_id（此处用IP:port 简化）
+      const machineId = `${newConnForm.value.host}:${newConnForm.value.port}`
+      const target: MachineAppTarget = { machine_id: machineId, app_name: newConnForm.value.app }
+
+      const success = await store.setCurrentTarget(target)
+      if (success) {
+        ElMessage.success('连接已建立并设置为当前目标')
+        selectedMachineId.value = target.machine_id
+        selectedAppName.value = target.app_name
+        newConnDialogVisible.value = false
+      } else {
+        ElMessage.error('设置目标失败，请确认被测机已注册到测试服务器')
+      }
+    } finally {
+      creatingConnection.value = false
+    }
+  })
 }
 
 const handleMachineChange = async () => {
@@ -611,7 +690,7 @@ onMounted(async () => {
 })
 </script>
 
-<style scoped lang="scss">
+<style scoped lang="less">
 .operation-page {
   padding: 20px;
   

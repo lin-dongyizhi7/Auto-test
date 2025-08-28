@@ -23,7 +23,8 @@ import type {
 
 // 连接管理API
 export const connectToTestServer = (data: TestServerConnection): Promise<ApiResponse> => {
-  return request.post('/connect', data)
+  // 后端仅需要端口，服务端模式忽略host
+  return request.post('/connect', { port: data.port })
 }
 
 export const disconnectFromTestServer = (): Promise<ApiResponse> => {
@@ -53,7 +54,8 @@ export const getCurrentTarget = (): Promise<ApiResponse<CurrentTarget>> => {
 }
 
 export const getScreenshot = (data?: ScreenshotRequest): Promise<ApiResponse<ScreenshotData>> => {
-  return request.post('/screenshot', data)
+  const params = data?.region ? { region: data.region } : {}
+  return request.post('/screenshot', null, { params })
 }
 
 // 元素操作API

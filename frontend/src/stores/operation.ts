@@ -61,6 +61,15 @@ export const useOperationStore = defineStore('operation', () => {
   const isTargetSet = computed(() => !!currentTarget.value)
 
   // 连接管理
+  const startServer = async (port = 8889) => {
+    // 服务端模式：调用后端 /connect 启动内置测试服务器
+    return await connect({ host: 'server', port })
+  }
+
+  const stopServer = async () => {
+    return await disconnect()
+  }
+
   const connect = async (config: TestServerConnection) => {
     try {
       connecting.value = true
@@ -377,6 +386,13 @@ export const useOperationStore = defineStore('operation', () => {
     if (isConnected.value) {
       await refreshMachines()
       await refreshCurrentTarget()
+    } else {
+      // 服务端运行模式：若未启动则尝试启动内置测试服务器
+      const ok = await startServer(connectionConfig.value.port)
+      if (ok) {
+        await refreshMachines()
+        await refreshCurrentTarget()
+      }
     }
   }
 
@@ -401,6 +417,8 @@ export const useOperationStore = defineStore('operation', () => {
     isTargetSet,
 
     // 连接管理
+    startServer,
+    stopServer,
     connect,
     disconnect,
     refreshConnectionStatus,

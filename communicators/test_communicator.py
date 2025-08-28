@@ -493,7 +493,7 @@ class SingleMachineCommunicator:
         self.app_region = None
         self._connect()
         self._get_app_region()
-    
+
     def _connect(self) -> None:
         """建立与被测试机器的TCP连接"""
         try:
@@ -502,7 +502,7 @@ class SingleMachineCommunicator:
             print(f"成功连接到被测试机器 {self.target_host}:{self.target_port}")
         except Exception as e:
             raise ConnectionError(f"无法连接到被测试机器: {str(e)}")
-    
+
     def _send_request(self, request_type: str, data: Dict) -> Dict:
         """发送请求到被测试机器并接收响应"""
         if not self.socket:
@@ -524,7 +524,7 @@ class SingleMachineCommunicator:
         except Exception as e:
             self.socket = None
             raise RuntimeError(f"通信错误: {str(e)}")
-    
+
     def _get_app_region(self) -> None:
         """从被测试机获取应用窗口信息"""
         try:
@@ -537,7 +537,7 @@ class SingleMachineCommunicator:
                 print(f"获取应用窗口区域失败: {response.get('error')}")
         except Exception as e:
             print(f"获取应用窗口区域时发生错误: {str(e)}")
-    
+
     def get_screenshot(self, region: Optional[List[int]] = None) -> Optional[np.ndarray]:
         """获取被测试机的屏幕截图"""
         use_region = region if region is not None else self.app_region
@@ -558,7 +558,7 @@ class SingleMachineCommunicator:
         except Exception as e:
             print(f"图片解码失败: {str(e)}")
             return None
-    
+
     def find_image(self, image_path: str, threshold: float = 0.8, region: Optional[List[int]] = None) -> Dict:
         """在被测试机屏幕上查找目标图片"""
         use_region = region if region is not None else self.app_region
@@ -599,7 +599,7 @@ class SingleMachineCommunicator:
                 return {"success": False, "error": "未找到匹配的图片"}
         except Exception as e:
             return {"success": False, "error": f"图片匹配失败: {str(e)}"}
-    
+
     def get_element_info(self, element_path: str, role_name_list: Optional[List[Optional[str]]] = None) -> Dict:
         """请求获取元素信息"""
         return self._send_request(
@@ -609,7 +609,7 @@ class SingleMachineCommunicator:
                 "role_name_list": role_name_list
             }
         )
-    
+
     def execute_commands(self, commands: List[Dict]) -> Dict:
         """发送指令集到被测试机器执行"""
         return self._send_request(
@@ -623,7 +623,7 @@ class SingleMachineCommunicator:
             request_type="disconnect",
             data={}
         )
-    
+
     def close(self) -> None:
         """关闭连接"""
         if self.socket:

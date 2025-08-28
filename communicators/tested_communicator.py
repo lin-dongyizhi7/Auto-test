@@ -92,6 +92,7 @@ class TestedMachineCommunicator:
         self.test_server_socket = None
         self.test_server_connected = False
         self.test_server_thread = None
+        self.test_server_send_lock = threading.Lock()
         
         # 事件同步
         self.event_queue = queue.Queue()
@@ -170,7 +171,7 @@ class TestedMachineCommunicator:
         # 4. 验证编码结果
         img_hex = img_bytes.hex()
         return img_hex
-
+        
     def _get_element(self, app_name: str, element_path: str, role_name_list: Optional[List[Optional[str]]] = None) -> Dict:
         """
         调用dogtail查询指定应用的元素信息，使用LRU缓存加速重复查询
@@ -393,7 +394,8 @@ class TestedMachineCommunicator:
                     "timestamp": time.time()
                 }
             }
-            self.test_server_socket.sendall(json.dumps(register_info).encode('utf-8'))
+            with self.test_server_send_lock:
+                self.test_server_socket.sendall(json.dumps(register_info).encode('utf-8'))
             
             # 接收注册响应
             response_data = self.test_server_socket.recv(1024).decode('utf-8')
@@ -405,6 +407,13 @@ class TestedMachineCommunicator:
                 # 启动测试服务器通信线程
                 self.test_server_thread = threading.Thread(target=self._test_server_communication, daemon=True)
                 self.test_server_thread.start()
+
+                # 将已注册的应用同步到测试服务器
+                try:
+                    for app_name, app in self.apps.items():
+                        self._register_app_to_server(app_name, app.get("info", {}))
+                except Exception as e:
+                    print(f"同步已注册应用到测试服务器失败: {str(e)}")
                 
                 return True
             else:
@@ -426,10 +435,15 @@ class TestedMachineCommunicator:
                     break
                 
                 request = json.loads(data)
-                response = self._handle_test_server_request(request)
-                
-                # 发送响应
-                self.test_server_socket.sendall(json.dumps(response).encode('utf-8'))
+                # 仅处理服务端发起的请求类型，忽略我们主动上报后的响应包
+                if request.get("type") in {"get_screenshot", "get_element", "exec_commands"}:
+                    response = self._handle_test_server_request(request)
+                    # 发送响应
+                    with self.test_server_send_lock:
+                        self.test_server_socket.sendall(json.dumps(response).encode('utf-8'))
+                else:
+                    # 忽略非请求类消息（如对sync_event/register_app的响应）
+                    continue
                 
             except json.JSONDecodeError:
                 error_msg = {"success": False, "error": "无效的JSON格式"}
@@ -440,6 +454,23 @@ class TestedMachineCommunicator:
         
         self.test_server_connected = False
         print("与测试服务器的连接已断开")
+
+    def _register_app_to_server(self, app_name: str, app_info: Dict) -> None:
+        """将应用注册到测试服务器（使用现有长连接，忽略响应）"""
+        if not self.test_server_connected:
+            return
+        try:
+            payload = {
+                "type": "register_app",
+                "data": {
+                    "app_name": app_name,
+                    "app_info": app_info or {}
+                }
+            }
+            with self.test_server_send_lock:
+                self.test_server_socket.sendall(json.dumps(payload).encode('utf-8'))
+        except Exception as e:
+            print(f"向测试服务器注册应用失败: {str(e)}")
 
     def _handle_test_server_request(self, request: Dict) -> Dict:
         """处理来自测试服务器的请求"""
@@ -667,20 +698,20 @@ class TestedMachineCommunicator:
                     app_name = request["data"].get("app_name")
                     commands = request["data"].get("commands")
                     response = self._handle_command_request(app_name, commands)
-                    
+
                 elif request["type"] == "register_app":
                     # 处理应用注册请求
                     app_name = request["data"].get("app_name")
                     app_info = request["data"].get("app_info", {})
                     success = self.register_app(app_name, app_info)
                     response = {"success": success, "message": "应用注册成功" if success else "应用注册失败"}
-                    
+
                 elif request["type"] == "unregister_app":
                     # 处理应用注销请求
                     app_name = request["data"].get("app_name")
                     success = self.unregister_app(app_name)
                     response = {"success": success, "message": "应用注销成功" if success else "应用注销失败"}
-                    
+
                 elif request["type"] == "disconnect":
                     # 处理主动断开连接请求
                     print(f"收到 {client_addr} 的断开连接请求")
@@ -724,20 +755,3 @@ class TestedMachineCommunicator:
         
         print("通信服务已停止")
 
-# 启动服务（直接运行该脚本即可）
-if __name__ == "__main__":
-    # 初始化服务，监听8888端口
-    communicator = TestedMachineCommunicator(
-        bind_port=8888,
-        test_server_host="192.168.1.100",  # 配置测试服务器地址
-        test_server_port=8889,
-        machine_id="test_machine_001"  # 配置机器ID
-    )
-    
-    try:
-        # 启动服务，指定要监控的应用
-        communicator.start(app_names=["calculator", "gedit"])  # 监控计算器和文本编辑器
-        # communicator.start()  # 监控所有应用
-    except KeyboardInterrupt:
-        # 按Ctrl+C停止服务
-        communicator.stop()

@@ -16,6 +16,7 @@ export interface ConnectionStatus {
   connected: boolean;
   host?: string;
   port?: number;
+  mode?: string; // 'embedded' 表示服务端内置测试服务器模式
 }
 
 // 多机器多应用类型

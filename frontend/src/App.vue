@@ -75,7 +75,7 @@ const activeMenu = computed(() => route.path)
 const isConnected = computed(() => operationStore.isConnected)
 </script>
 
-<style lang="scss" scoped>
+<style lang="less" scoped>
 .app-container {
   height: 100vh;
 }

@@ -29,10 +29,10 @@ if errorlevel 1 (
 echo 依赖安装完成
 
 REM 启动服务
-echo 启动后端服务...
+echo 启动后端服务(uvicorn)...
 echo 服务地址: http://localhost:8080
 echo API文档: http://localhost:8080/docs
 echo 按 Ctrl+C 停止服务
 echo.
 
-python main.py 
+python -m uvicorn app:app --host 0.0.0.0 --port 8080 --reload

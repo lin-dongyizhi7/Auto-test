@@ -38,6 +38,16 @@
           </template>
         </el-table-column>
         <el-table-column prop="description" label="描述" min-width="200" show-overflow-tooltip />
+        <el-table-column label="目标" width="200">
+          <template #default="{ row }">
+            <div v-if="row.target_machine_id && row.target_app_name">
+              <el-tag size="small" type="info">{{ row.target_machine_id }}</el-tag>
+              <span style="margin: 0 5px">/</span>
+              <el-tag size="small" type="success">{{ row.target_app_name }}</el-tag>
+            </div>
+            <span v-else style="color: #909399">未设置</span>
+          </template>
+        </el-table-column>
         <el-table-column prop="status" label="状态" width="100">
           <template #default="{ row }">
             <el-tag :type="getStatusType(row.status)">
@@ -96,6 +106,28 @@
         <el-form-item label="描述">
           <el-input v-model="createForm.description" type="textarea" placeholder="请输入脚本描述" />
         </el-form-item>
+        <el-form-item label="目标机器">
+          <el-select v-model="createForm.target_machine_id" placeholder="选择目标机器" style="width: 100%">
+            <el-option 
+              v-for="machine in availableMachines" 
+              :key="machine.id"
+              :label="machine.address"
+              :value="machine.id"
+            />
+          </el-select>
+        </el-form-item>
+        
+        <el-form-item label="目标应用">
+          <el-select v-model="createForm.target_app_name" placeholder="选择目标应用" style="width: 100%">
+            <el-option 
+              v-for="app in availableApps" 
+              :key="app.id"
+              :label="app.name"
+              :value="app.name"
+            />
+          </el-select>
+        </el-form-item>
+        
         <el-form-item label="脚本内容" prop="content">
           <el-input
             v-model="createForm.content"
@@ -128,6 +160,28 @@
         <el-form-item label="描述">
           <el-input v-model="editForm.description" type="textarea" placeholder="请输入脚本描述" />
         </el-form-item>
+        <el-form-item label="目标机器">
+          <el-select v-model="editForm.target_machine_id" placeholder="选择目标机器" style="width: 100%">
+            <el-option 
+              v-for="machine in availableMachines" 
+              :key="machine.id"
+              :label="machine.address"
+              :value="machine.id"
+            />
+          </el-select>
+        </el-form-item>
+        
+        <el-form-item label="目标应用">
+          <el-select v-model="editForm.target_app_name" placeholder="选择目标应用" style="width: 100%">
+            <el-option 
+              v-for="app in availableApps" 
+              :key="app.id"
+              :label="app.name"
+              :value="app.name"
+            />
+          </el-select>
+        </el-form-item>
+        
         <el-form-item label="脚本内容" prop="content">
           <el-input
             v-model="editForm.content"
@@ -202,6 +256,8 @@
           </el-descriptions-item>
           <el-descriptions-item label="创建时间">{{ formatTime(currentScript.createdAt) }}</el-descriptions-item>
           <el-descriptions-item label="更新时间">{{ formatTime(currentScript.updatedAt) }}</el-descriptions-item>
+          <el-descriptions-item label="目标机器">{{ currentScript.target_machine_id || '未设置' }}</el-descriptions-item>
+          <el-descriptions-item label="目标应用">{{ currentScript.target_app_name || '未设置' }}</el-descriptions-item>
           <el-descriptions-item label="描述" :span="2">{{ currentScript.description || '无' }}</el-descriptions-item>
         </el-descriptions>
         
@@ -271,11 +327,23 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, computed } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import { Plus, Upload, Refresh, UploadFilled } from '@element-plus/icons-vue'
-import { scriptAPI } from '@/api/operation'
+import { 
+  getScripts, 
+  getScript, 
+  createScript, 
+  updateScript, 
+  deleteScript, 
+  runScript, 
+  importScript, 
+  exportScript 
+} from '@/api/operation'
 import type { ScriptInfo, CreateScriptRequest, UpdateScriptRequest, ScriptRunResult } from '@/api/types'
+import { useOperationStore } from '@/stores/operation'
+
+const operationStore = useOperationStore()
 
 // 响应式数据
 const loading = ref(false)
@@ -289,15 +357,23 @@ const showImportDialog = ref(false)
 const showViewDialog = ref(false)
 const showResultDialog = ref(false)
 
+// 计算属性
+const availableMachines = computed(() => operationStore.machines)
+const availableApps = computed(() => operationStore.apps)
+
 // 表单数据
 const createForm = reactive<CreateScriptRequest>({
   name: '',
   description: '',
-  content: ''
+  content: '',
+  target_machine_id: '',
+  target_app_name: ''
 })
 
 const editForm = reactive<UpdateScriptRequest>({
   name: '',
+  target_machine_id: '',
+  target_app_name: '',
   description: '',
   content: ''
 })
@@ -322,6 +398,12 @@ const createRules: FormRules = {
     { required: true, message: '请输入脚本名称', trigger: 'blur' },
     { min: 1, max: 50, message: '长度在 1 到 50 个字符', trigger: 'blur' }
   ],
+  target_machine_id: [
+    { required: true, message: '请选择目标机器', trigger: 'change' }
+  ],
+  target_app_name: [
+    { required: true, message: '请选择目标应用', trigger: 'change' }
+  ],
   content: [
     { required: true, message: '请输入脚本内容', trigger: 'blur' }
   ]
@@ -332,13 +414,20 @@ const editRules: FormRules = {
     { required: true, message: '请输入脚本名称', trigger: 'blur' },
     { min: 1, max: 50, message: '长度在 1 到 50 个字符', trigger: 'blur' }
   ],
+  target_machine_id: [
+    { required: true, message: '请选择目标机器', trigger: 'change' }
+  ],
+  target_app_name: [
+    { required: true, message: '请选择目标应用', trigger: 'change' }
+  ],
   content: [
     { required: true, message: '请输入脚本内容', trigger: 'blur' }
   ]
 }
 
 // 生命周期
-onMounted(() => {
+onMounted(async () => {
+  await operationStore.initialize()
   loadScripts()
 })
 
@@ -346,7 +435,7 @@ onMounted(() => {
 const loadScripts = async () => {
   loading.value = true
   try {
-    const response = await scriptAPI.getScripts()
+    const response = await getScripts()
     scripts.value = response.data || []
   } catch (error) {
     ElMessage.error('加载脚本列表失败')
@@ -392,12 +481,16 @@ const resetCreateForm = () => {
   createForm.name = ''
   createForm.description = ''
   createForm.content = ''
+  createForm.target_machine_id = ''
+  createForm.target_app_name = ''
 }
 
 const resetEditForm = () => {
   editForm.name = ''
   editForm.description = ''
   editForm.content = ''
+  editForm.target_machine_id = ''
+  editForm.target_app_name = ''
 }
 
 // 创建脚本
@@ -408,7 +501,7 @@ const createScript = async () => {
     if (valid) {
       creating.value = true
       try {
-        await scriptAPI.createScript(createForm)
+        await createScript(createForm)
         ElMessage.success('脚本创建成功')
         showCreateDialog.value = false
         resetCreateForm()
@@ -429,6 +522,8 @@ const editScript = (script: ScriptInfo) => {
   editForm.name = script.name
   editForm.description = script.description || ''
   editForm.content = script.content
+  editForm.target_machine_id = script.target_machine_id || ''
+  editForm.target_app_name = script.target_app_name || ''
   showEditDialog.value = true
 }
 
@@ -439,7 +534,7 @@ const updateScript = async () => {
     if (valid) {
       updating.value = true
       try {
-        await scriptAPI.updateScript(currentScript.value!.id, editForm)
+        await updateScript(currentScript.value!.id, editForm)
         ElMessage.success('脚本更新成功')
         showEditDialog.value = false
         resetEditForm()
@@ -467,7 +562,7 @@ const deleteScript = async (script: ScriptInfo) => {
       }
     )
     
-    await scriptAPI.deleteScript(script.id)
+    await deleteScript(script.id)
     ElMessage.success('脚本删除成功')
     loadScripts()
   } catch (error) {
@@ -493,7 +588,7 @@ const batchDelete = async () => {
     )
     
     // 批量删除
-    const deletePromises = selectedScripts.value.map(script => scriptAPI.deleteScript(script.id))
+    const deletePromises = selectedScripts.value.map(script => deleteScript(script.id))
     for (const promise of deletePromises) {
       await promise
     }
@@ -512,7 +607,7 @@ const batchDelete = async () => {
 // 运行脚本
 const runScript = async (script: ScriptInfo) => {
   try {
-    const response = await scriptAPI.runScript(script.id)
+    const response = await runScript(script.id)
     runResult.value = response.data
     showResultDialog.value = true
     loadScripts() // 刷新状态
@@ -545,7 +640,7 @@ const importScript = async () => {
   
   importing.value = true
   try {
-    await scriptAPI.importScript(uploadFiles[0].raw)
+    await importScript(uploadFiles[0].raw)
     ElMessage.success('脚本导入成功')
     showImportDialog.value = false
     uploadRef.value?.clearFiles()
@@ -561,7 +656,7 @@ const importScript = async () => {
 // 导出脚本
 const exportScript = async (script: ScriptInfo) => {
   try {
-    const response = await scriptAPI.exportScript(script.id)
+    const response = await exportScript(script.id)
     const blob = new Blob([response.data], { type: 'text/plain' })
     const url = window.URL.createObjectURL(blob)
     const link = document.createElement('a')
@@ -590,7 +685,7 @@ const editCurrentScript = () => {
 }
 </script>
 
-<style lang="scss" scoped>
+<style lang="less" scoped>
 .script-page {
   padding: 20px;
   
