@@ -67,11 +67,7 @@
         </div>
       </template>
 
-      <div v-if="!isConnected" class="no-connection">
-        <el-empty description="未连接到测试服务器" />
-      </div>
-
-      <div v-else-if="machines.length === 0" class="no-machines">
+      <div v-if="machines.length === 0" class="no-machines">
         <el-empty description="暂无可用机器" />
       </div>
 
@@ -165,6 +161,9 @@
     <!-- 新建连接对话框 -->
     <el-dialog v-model="createDialogVisible" title="新建连接" width="420px">
       <el-form label-width="80px">
+        <el-form-item label="IP">
+          <el-input v-model="createIp" placeholder="例如 192.168.1.100" />
+        </el-form-item>
         <el-form-item label="端口">
           <el-input v-model.number="createPort" type="number" placeholder="8889" />
         </el-form-item>
@@ -181,7 +180,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useOperationStore } from '@/stores/operation'
-import { disconnectMachine } from '@/api/operation'
+import { connectMachine, disconnectMachine } from '@/api/operation'
 
 const operationStore = useOperationStore()
 
@@ -191,6 +190,7 @@ const startTime = ref(Date.now())
 
 // 新建连接对话框
 const createDialogVisible = ref(false)
+const createIp = ref('')
 const createPort = ref(8889)
 const creating = ref(false)
 
@@ -226,20 +226,22 @@ const lastOperationTime = computed(() => {
 })
 
 // 方法
-const openCreateConnection = () => {
-  createDialogVisible.value = true
-}
+const openCreateConnection = () => { createDialogVisible.value = true }
 
 const createConnection = async () => {
+  if (!createIp.value || !createPort.value) {
+    ElMessage.warning('请填写 IP 和端口')
+    return
+  }
   creating.value = true
   try {
-    const ok = await operationStore.startServer(createPort.value)
-    if (ok) {
-      ElMessage.success('连接已建立')
+    const res = await connectMachine(createIp.value.trim(), createPort.value)
+    if (res.success) {
+      ElMessage.success('连接已创建')
       createDialogVisible.value = false
       await operationStore.refreshMachines()
     } else {
-      ElMessage.error('连接失败')
+      ElMessage.error(res.message || '连接失败')
     }
   } catch (e) {
     ElMessage.error('连接失败')
@@ -308,7 +310,7 @@ const updateUptime = () => {
 onMounted(async () => {
   setInterval(updateUptime, 1000)
   await operationStore.initialize()
-  if (isConnected.value) await operationStore.refreshMachines()
+  await operationStore.refreshMachines().catch(() => {})
 })
 </script>
 

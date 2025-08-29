@@ -310,6 +310,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# 应用启动时自动启动内置测试服务器
+try:
+    if not is_running:
+        server = MultiMachineOperation(bind_host=config.DEFAULT_HOST, server_port=config.DEFAULT_PORT)
+        is_running = True
+        logger.info(f"内置测试服务器已在启动时开启 {config.DEFAULT_HOST}:{config.DEFAULT_PORT}")
+except Exception as e:
+    logger.error(f"启动内置测试服务器失败: {e}")
+
 def ok(data: Optional[Dict[str, Any]] = None, message: Optional[str] = None) -> OperationResult:
     return OperationResult(success=True, data=data, message=message)
 
@@ -360,6 +369,42 @@ def machines():
         return ok({"machines": [{"id": mid, "address": f"机器_{mid}", "status": "connected", "apps": []} for mid in mids]})
     except Exception as e:
         return err("获取机器列表失败", str(e))
+
+@app.post("/machines/connect")
+def connect_machine(body: Dict[str, Any]):
+    """
+    新建与待测试机器的连接（按IP/Port记录）。
+    说明：目前为占位实现，优先尝试调用 server.add_machine / connect_to_machine 等方法；
+    若不存在，则将其登记到 server.machines 字典中，前端即可展示，后续由被测端主动连入时覆盖。
+    body: { "ip": "192.168.1.2", "port": 8889, "machine_id": 可选自定义ID }
+    """
+    ensure_server()
+    try:
+        ip = str(body.get('ip', '')).strip()
+        port = int(body.get('port', 0))
+        mid = str(body.get('machine_id') or f"{ip}:{port}")
+        if not ip or not port:
+            return err("参数错误", "需要提供 ip 与 port")
+        # 如有专用方法优先使用
+        if hasattr(server, 'connect_to_machine') and callable(getattr(server, 'connect_to_machine')):
+            try:
+                getattr(server, 'connect_to_machine')(ip, port, mid)
+            except Exception as _:
+                # 回退到登记
+                pass
+        # 回退：登记占位
+        machines = getattr(server, 'machines', {})
+        if mid not in machines:
+            machines[mid] = {
+                "id": mid,
+                "address": ip,
+                "port": port,
+                "status": "connected",
+                "apps": []
+            }
+        return ok({"machines": [{"id": k, "address": v.get('address', k), "status": v.get('status', 'connected'), "apps": v.get('apps', [])} for k, v in machines.items()]}, "连接已创建")
+    except Exception as e:
+        return err("创建连接失败", str(e))
 
 @app.delete("/machines/{machine_id}")
 def disconnect_machine(machine_id: str):

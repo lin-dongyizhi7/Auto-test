@@ -40,6 +40,10 @@ export const getMachines = (): Promise<ApiResponse<{ machines: MachineInfo[] }>>
   return request.get('/machines')
 }
 
+export const connectMachine = (ip: string, port: number, machineId?: string): Promise<ApiResponse<{ machines: MachineInfo[] }>> => {
+  return request.post('/machines/connect', { ip, port, machine_id: machineId })
+}
+
 export const disconnectMachine = (machineId: string): Promise<ApiResponse> => {
   return request.delete(`/machines/${machineId}`)
 }
