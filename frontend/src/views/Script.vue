@@ -68,16 +68,16 @@
         </el-table-column>
         <el-table-column label="操作" width="200" fixed="right">
           <template #default="{ row }">
-            <el-button size="small" @click="runScript(row)" :loading="row.status === 'running'">
+            <el-button size="small" @click="onRunScript(row)" :loading="row.status === 'running'">
               运行
             </el-button>
             <el-button size="small" @click="editScript(row)">
               编辑
             </el-button>
-            <el-button size="small" @click="exportScript(row)">
+            <el-button size="small" @click="onExportScript(row)">
               导出
             </el-button>
-            <el-button size="small" type="danger" @click="deleteScript(row)">
+            <el-button size="small" type="danger" @click="onDeleteScript(row)">
               删除
             </el-button>
           </template>
@@ -140,7 +140,7 @@
       </el-form>
       <template #footer>
         <el-button @click="showCreateDialog = false">取消</el-button>
-        <el-button type="primary" @click="createScript" :loading="creating">
+        <el-button type="primary" @click="onCreateScript" :loading="creating">
           创建
         </el-button>
       </template>
@@ -194,7 +194,7 @@
       </el-form>
       <template #footer>
         <el-button @click="showEditDialog = false">取消</el-button>
-        <el-button type="primary" @click="updateScript" :loading="updating">
+        <el-button type="primary" @click="onUpdateScript" :loading="updating">
           保存
         </el-button>
       </template>
@@ -229,7 +229,7 @@
       </el-upload>
       <template #footer>
         <el-button @click="showImportDialog = false">取消</el-button>
-        <el-button type="primary" @click="importScript" :loading="importing">
+        <el-button type="primary" @click="onImportScript" :loading="importing">
           导入
         </el-button>
       </template>
@@ -331,14 +331,14 @@ import { ref, reactive, onMounted, computed } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import { Plus, Upload, Refresh, UploadFilled } from '@element-plus/icons-vue'
 import { 
-  getScripts, 
-  getScript, 
-  createScript, 
-  updateScript, 
-  deleteScript, 
-  runScript, 
-  importScript, 
-  exportScript 
+  getScripts as getScriptsApi, 
+  getScript as getScriptApi, 
+  createScript as createScriptApi, 
+  updateScript as updateScriptApi, 
+  deleteScript as deleteScriptApi, 
+  runScript as runScriptApi, 
+  importScript as importScriptApi, 
+  exportScript as exportScriptApi 
 } from '@/api/operation'
 import type { ScriptInfo, CreateScriptRequest, UpdateScriptRequest, ScriptRunResult } from '@/api/types'
 import { useOperationStore } from '@/stores/operation'
@@ -392,7 +392,7 @@ const createFormRef = ref<FormInstance>()
 const editFormRef = ref<FormInstance>()
 const uploadRef = ref()
 
-// 表单验证规则
+// 表单验证规则（保持不变）
 const createRules: FormRules = {
   name: [
     { required: true, message: '请输入脚本名称', trigger: 'blur' },
@@ -435,11 +435,13 @@ onMounted(async () => {
 const loadScripts = async () => {
   loading.value = true
   try {
-    const response = await getScripts()
-    scripts.value = response.data || []
+    const response = await getScriptsApi()
+    // response.data 为 ApiResponse，真正的数据在 response.data.data
+    scripts.value = (response.data && (response.data as any).data) || []
   } catch (error) {
     ElMessage.error('加载脚本列表失败')
     console.error('Load scripts error:', error)
+    scripts.value = []
   } finally {
     loading.value = false
   }
@@ -473,9 +475,7 @@ const getStatusText = (status: string) => {
   return statusMap[status] || '未知'
 }
 
-const formatTime = (time: string) => {
-  return new Date(time).toLocaleString('zh-CN')
-}
+const formatTime = (time: string) => new Date(time).toLocaleString('zh-CN')
 
 const resetCreateForm = () => {
   createForm.name = ''
@@ -493,15 +493,14 @@ const resetEditForm = () => {
   editForm.target_app_name = ''
 }
 
-// 创建脚本
-const createScript = async () => {
+// 创建脚本（调用 API）
+const onCreateScript = async () => {
   if (!createFormRef.value) return
-  
   await createFormRef.value.validate(async (valid) => {
     if (valid) {
       creating.value = true
       try {
-        await createScript(createForm)
+        await createScriptApi(createForm)
         ElMessage.success('脚本创建成功')
         showCreateDialog.value = false
         resetCreateForm()
@@ -527,14 +526,13 @@ const editScript = (script: ScriptInfo) => {
   showEditDialog.value = true
 }
 
-const updateScript = async () => {
+const onUpdateScript = async () => {
   if (!editFormRef.value || !currentScript.value) return
-  
   await editFormRef.value.validate(async (valid) => {
     if (valid) {
       updating.value = true
       try {
-        await updateScript(currentScript.value!.id, editForm)
+        await updateScriptApi(currentScript.value!.id, editForm)
         ElMessage.success('脚本更新成功')
         showEditDialog.value = false
         resetEditForm()
@@ -550,19 +548,14 @@ const updateScript = async () => {
 }
 
 // 删除脚本
-const deleteScript = async (script: ScriptInfo) => {
+const onDeleteScript = async (script: ScriptInfo) => {
   try {
-    await ElMessageBox.confirm(
-      `确定要删除脚本 "${script.name}" 吗？`,
-      '确认删除',
-      {
-        confirmButtonText: '确定',
-        cancelButtonText: '取消',
-        type: 'warning'
-      }
-    )
-    
-    await deleteScript(script.id)
+    await ElMessageBox.confirm(`确定要删除脚本 "${script.name}" 吗？`, '确认删除', {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning'
+    })
+    await deleteScriptApi(script.id)
     ElMessage.success('脚本删除成功')
     loadScripts()
   } catch (error) {
@@ -575,24 +568,15 @@ const deleteScript = async (script: ScriptInfo) => {
 
 const batchDelete = async () => {
   if (selectedScripts.value.length === 0) return
-  
   try {
-    await ElMessageBox.confirm(
-      `确定要删除选中的 ${selectedScripts.value.length} 个脚本吗？`,
-      '确认批量删除',
-      {
-        confirmButtonText: '确定',
-        cancelButtonText: '取消',
-        type: 'warning'
-      }
-    )
-    
-    // 批量删除
-    const deletePromises = selectedScripts.value.map(script => deleteScript(script.id))
-    for (const promise of deletePromises) {
-      await promise
+    await ElMessageBox.confirm(`确定要删除选中的 ${selectedScripts.value.length} 个脚本吗？`, '确认批量删除', {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning'
+    })
+    for (const s of selectedScripts.value) {
+      await deleteScriptApi(s.id)
     }
-    
     ElMessage.success('批量删除成功')
     selectedScripts.value = []
     loadScripts()
@@ -605,12 +589,13 @@ const batchDelete = async () => {
 }
 
 // 运行脚本
-const runScript = async (script: ScriptInfo) => {
+const onRunScript = async (script: ScriptInfo) => {
   try {
-    const response = await runScript(script.id)
-    runResult.value = response.data
+    const response = await runScriptApi(script.id)
+    // response.data 为 ApiResponse，运行结果在 data
+    runResult.value = (response.data && (response.data as any).data) || null
     showResultDialog.value = true
-    loadScripts() // 刷新状态
+    loadScripts()
   } catch (error) {
     ElMessage.error('脚本运行失败')
     console.error('Run script error:', error)
@@ -618,9 +603,7 @@ const runScript = async (script: ScriptInfo) => {
 }
 
 // 导入脚本
-const handleFileChange = (file: any) => {
-  // 文件选择处理
-}
+const handleFileChange = (file: any) => {}
 
 const beforeUpload = (file: File) => {
   const isPython = file.name.indexOf('.py') !== -1
@@ -628,22 +611,21 @@ const beforeUpload = (file: File) => {
     ElMessage.error('只能上传 .py 文件')
     return false
   }
-  return false // 阻止自动上传
+  return false
 }
 
-const importScript = async () => {
-  const uploadFiles = uploadRef.value?.uploadFiles
+const onImportScript = async () => {
+  const uploadFiles = (uploadRef.value as any)?.uploadFiles
   if (!uploadFiles || uploadFiles.length === 0) {
     ElMessage.warning('请选择要导入的文件')
     return
   }
-  
   importing.value = true
   try {
-    await importScript(uploadFiles[0].raw)
+    await importScriptApi(uploadFiles[0].raw)
     ElMessage.success('脚本导入成功')
     showImportDialog.value = false
-    uploadRef.value?.clearFiles()
+    ;(uploadRef.value as any)?.clearFiles()
     loadScripts()
   } catch (error) {
     ElMessage.error('脚本导入失败')
@@ -654,9 +636,9 @@ const importScript = async () => {
 }
 
 // 导出脚本
-const exportScript = async (script: ScriptInfo) => {
+const onExportScript = async (script: ScriptInfo) => {
   try {
-    const response = await exportScript(script.id)
+    const response = await exportScriptApi(script.id)
     const blob = new Blob([response.data], { type: 'text/plain' })
     const url = window.URL.createObjectURL(blob)
     const link = document.createElement('a')
