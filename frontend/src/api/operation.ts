@@ -40,6 +40,10 @@ export const getMachines = (): Promise<ApiResponse<{ machines: MachineInfo[] }>>
   return request.get('/machines')
 }
 
+export const disconnectMachine = (machineId: string): Promise<ApiResponse> => {
+  return request.delete(`/machines/${machineId}`)
+}
+
 export const getApps = (machineId?: string): Promise<ApiResponse<{ apps: AppInfo[] }>> => {
   const params = machineId ? { machine_id: machineId } : {}
   return request.get('/apps', { params })

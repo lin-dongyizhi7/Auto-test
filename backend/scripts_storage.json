@@ -1,0 +1,28 @@
+{
+  "script_1": {
+    "id": "script_1",
+    "name": "计算器测试脚本",
+    "description": "测试计算器基本功能的脚本",
+    "content": "#!/usr/bin/env python3\n\"\"\"\n计算器测试脚本\n\"\"\"\nimport time\nfrom operation_multi_machine import MultiMachineOperation\n\n# 创建多机器操作实例\nop = MultiMachineOperation(bind_host=\"0.0.0.0\", server_port=8889)\n\n# 等待连接\nprint(\"等待被测试机器连接...\")\ntimeout = 60\nstart_time = time.time()\n\nwhile time.time() - start_time < timeout:\n    machines = op.get_available_machines()\n    apps = op.get_available_apps()\n    \n    if machines and apps:\n        print(f\"检测到 {len(machines)} 台机器: {machines}\")\n        break\n    \n    print(\"等待连接...\")\n    time.sleep(2)\nelse:\n    print(\"等待超时\")\n    exit(1)\n\n# 选择第一个应用\napps = op.get_available_apps()\nif apps:\n    target_app = apps[0]\n    machine_id = target_app['machine_id']\n    app_name = target_app['name']\n    \n    print(f\"选择目标: 机器 {machine_id}, 应用 {app_name}\")\n    \n    # 设置目标\n    if op.set_target(machine_id, app_name):\n        print(\"目标设置成功\")\n        \n        # 执行测试\n        print(\"开始执行测试...\")\n        \n        # 点击数字1\n        op.click_element(element_path=\"1\", role_name_list=[\"push button\"])\n        time.sleep(0.5)\n        \n        # 点击加号\n        op.click_element(element_path=\"+\", role_name_list=[\"push button\"])\n        time.sleep(0.5)\n        \n        # 点击数字2\n        op.click_element(element_path=\"2\", role_name_list=[\"push button\"])\n        time.sleep(0.5)\n        \n        # 点击等号\n        op.click_element(element_path=\"=\", role_name_list=[\"push button\"])\n        \n        print(\"测试完成\")\n    else:\n        print(\"目标设置失败\")\nelse:\n    print(\"没有可用的应用\")",
+    "createdAt": "2025-01-27T16:30:00",
+    "updatedAt": "2025-01-27T16:30:00",
+    "status": "idle",
+    "lastRunTime": null,
+    "runCount": 0,
+    "target_machine_id": null,
+    "target_app_name": null
+  },
+  "script_2": {
+    "id": "script_2",
+    "name": "截图测试脚本",
+    "description": "获取应用截图的测试脚本",
+    "content": "#!/usr/bin/env python3\n\"\"\"\n截图测试脚本\n\"\"\"\nimport time\nfrom operation_multi_machine import MultiMachineOperation\n\n# 创建多机器操作实例\nop = MultiMachineOperation(bind_host=\"0.0.0.0\", server_port=8889)\n\n# 等待连接\nprint(\"等待被测试机器连接...\")\ntimeout = 60\nstart_time = time.time()\n\nwhile time.time() - start_time < timeout:\n    machines = op.get_available_machines()\n    apps = op.get_available_apps()\n    \n    if machines and apps:\n        print(f\"检测到 {len(machines)} 台机器: {machines}\")\n        break\n    \n    print(\"等待连接...\")\n    time.sleep(2)\nelse:\n    print(\"等待超时\")\n    exit(1)\n\n# 选择第一个应用\napps = op.get_available_apps()\nif apps:\n    target_app = apps[0]\n    machine_id = target_app['machine_id']\n    app_name = target_app['name']\n    \n    print(f\"选择目标: 机器 {machine_id}, 应用 {app_name}\")\n    \n    # 设置目标\n    if op.set_target(machine_id, app_name):\n        print(\"目标设置成功\")\n        \n        # 获取截图\n        print(\"获取应用截图...\")\n        screenshot_result = op.get_screenshot()\n        \n        if screenshot_result.get(\"success\"):\n            print(\"截图获取成功\")\n            print(f\"截图大小: {screenshot_result['data']['size']}\")\n        else:\n            print(f\"截图获取失败: {screenshot_result.get('error')}\")\n        \n        print(\"测试完成\")\n    else:\n        print(\"目标设置失败\")\nelse:\n    print(\"没有可用的应用\")",
+    "createdAt": "2025-01-27T16:35:00",
+    "updatedAt": "2025-01-27T16:35:00",
+    "status": "idle",
+    "lastRunTime": null,
+    "runCount": 0,
+    "target_machine_id": null,
+    "target_app_name": null
+  }
+}
