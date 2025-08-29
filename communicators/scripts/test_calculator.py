@@ -6,7 +6,7 @@ LastEditTime: 2025-07-28 15:43:01
 FilePath: \Auto-test\communicators\test_calculator.py
 Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
 '''
-from operation import Operation
+from ..operation import Operation
 import os
 
 
