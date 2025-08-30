@@ -137,7 +137,7 @@ class ScriptStorageManager:
                     scripts_data = json.load(f)
                     # 将字典数据转换为ScriptInfo对象
                     for script_id, script_data in scripts_data.items():
-                        self.scripts_storage[script_id] = ScriptInfo(**script_data)
+                        self.scripts_storage[script_id] = ScriptInfo(** script_data)
                 logger.info(f"从文件加载了 {len(self.scripts_storage)} 个脚本")
             else:
                 logger.info("脚本存储文件不存在，使用空存储")
@@ -372,37 +372,34 @@ def machines():
 
 @app.post("/machines/connect")
 def connect_machine(body: Dict[str, Any]):
-    """
-    新建与待测试机器的连接（按IP/Port记录）。
-    说明：目前为占位实现，优先尝试调用 server.add_machine / connect_to_machine 等方法；
-    若不存在，则将其登记到 server.machines 字典中，前端即可展示，后续由被测端主动连入时覆盖。
-    body: { "ip": "192.168.1.2", "port": 8889, "machine_id": 可选自定义ID }
-    """
+    """新建与待测试机器的连接（主动连接模式）"""
     ensure_server()
     try:
         ip = str(body.get('ip', '')).strip()
         port = int(body.get('port', 0))
         mid = str(body.get('machine_id') or f"{ip}:{port}")
+        
         if not ip or not port:
             return err("参数错误", "需要提供 ip 与 port")
-        # 如有专用方法优先使用
+        
+        # 调用服务器的主动连接方法
         if hasattr(server, 'connect_to_machine') and callable(getattr(server, 'connect_to_machine')):
-            try:
-                getattr(server, 'connect_to_machine')(ip, port, mid)
-            except Exception as _:
-                # 回退到登记
-                pass
-        # 回退：登记占位
+            result = server.connect_to_machine(mid, ip, port)
+            if not result.get("success"):
+                return err("连接失败", result.get("error"))
+        
+        # 获取更新后的机器列表
         machines = getattr(server, 'machines', {})
-        if mid not in machines:
-            machines[mid] = {
-                "id": mid,
-                "address": ip,
-                "port": port,
-                "status": "connected",
-                "apps": []
-            }
-        return ok({"machines": [{"id": k, "address": v.get('address', k), "status": v.get('status', 'connected'), "apps": v.get('apps', [])} for k, v in machines.items()]}, "连接已创建")
+        return ok({
+            "machines": [
+                {"id": k, 
+                 "address": f"{v.get('address')[0]}:{v.get('address')[1]}", 
+                 "status": v.get('status', 'connected'), 
+                 "apps": v.get('apps', [])} 
+                for k, v in machines.items()
+            ]
+        }, "连接已创建")
+        
     except Exception as e:
         return err("创建连接失败", str(e))
 
@@ -410,35 +407,28 @@ def connect_machine(body: Dict[str, Any]):
 def disconnect_machine(machine_id: str):
     ensure_server()
     try:
-        # 优先使用显式方法
+        # 优先使用服务器的断开方法
         if hasattr(server, 'disconnect_machine') and callable(getattr(server, 'disconnect_machine')):
-            try:
-                getattr(server, 'disconnect_machine')(machine_id)
-                return ok(message=f"机器 {machine_id} 已断开")
-            except Exception as inner:
-                # 回退到直接关闭连接
-                pass
-        # 回退方案：直接从服务器记录中移除并尝试关闭socket
-        try:
-            machines = getattr(server, 'machines', {})
-            if machine_id in machines:
-                info = machines.pop(machine_id)
-                conn = None
-                # 常见可能字段名
-                for key in ['conn', 'socket', 'sock', 'connection']:
-                    if isinstance(info, dict) and key in info:
-                        conn = info[key]
-                        break
-                if conn:
-                    try:
-                        conn.close()
-                    except Exception:
-                        pass
+            result = server.disconnect_machine(machine_id)
+            if result.get("success"):
                 return ok(message=f"机器 {machine_id} 已断开")
             else:
-                return err("断开失败", f"未找到机器 {machine_id}")
-        except Exception as e2:
-            return err("断开失败", str(e2))
+                return err("断开失败", result.get("error"))
+        
+        # 回退方案
+        machines = getattr(server, 'machines', {})
+        if machine_id in machines:
+            info = machines.pop(machine_id)
+            # 尝试关闭连接
+            if 'socket' in info:
+                try:
+                    info['socket'].close()
+                except Exception:
+                    pass
+            return ok(message=f"机器 {machine_id} 已断开")
+        else:
+            return err("断开失败", f"未找到机器 {machine_id}")
+            
     except Exception as e:
         return err("断开失败", str(e))
 
@@ -499,7 +489,7 @@ def click_image(req: ImageOperationRequest):
     ensure_server()
     try:
         res = server.click_image(req.imagePath, req.threshold)
-        return OperationResult(**res)
+        return OperationResult(** res)
     except Exception as e:
         return err("图片点击失败", str(e))
 

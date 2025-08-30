@@ -35,9 +35,10 @@ class Event:
 class TestMachineCommunicator:
     """测试者机器的通信类，支持多机器连接、多应用通信和事件同步"""
     
-    def __init__(self, server_host: str = "0.0.0.0", server_port: int = 8889):
+    def __init__(self, server_host: str = "0.0.0.0", server_port: int = 8889, server_id: str = "test_server"):
         self.server_host = server_host
         self.server_port = server_port
+        self.server_id = server_id  # 当前服务器标识
         self.server_socket = None
         self.is_running = False
         
@@ -163,6 +164,75 @@ class TestMachineCommunicator:
             if machine_id:
                 self._disconnect_machine(machine_id)
             client_socket.close()
+    
+    def connect_to_machine(self, machine_id: str, host: str, port: int) -> Dict:
+        """主动连接到目标机器"""
+        if machine_id in self.connections:
+            return {"success": False, "error": f"机器 {machine_id} 已连接"}
+
+        try:
+            # 创建连接
+            client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            client_socket.connect((host, port))
+            print(f"主动连接到机器 {host}:{port}")
+
+            # 发送注册信息（作为客户端向目标机器注册）
+            register_info = {
+                "machine_id": self.server_id,  # 当前服务器标识
+                "machine_info": {"role": "test_server"}
+            }
+            client_socket.sendall(json.dumps(register_info).encode('utf-8'))
+
+            # 等待响应
+            response = client_socket.recv(1024).decode('utf-8')
+            if not response:
+                client_socket.close()
+                return {"success": False, "error": "连接后未收到响应"}
+
+            response_data = json.loads(response)
+            if not response_data.get("success"):
+                client_socket.close()
+                return {"success": False, "error": response_data.get("error", "注册失败")}
+
+            # 注册机器信息
+            self.machines[machine_id] = {
+                "address": (host, port),
+                "info": {"host": host, "port": port},
+                "connected_at": time.time(),
+                "status": "connected"
+            }
+            self.connections[machine_id] = client_socket
+
+            # 启动处理线程
+            client_thread = threading.Thread(
+                target=self._handle_machine_connection,
+                args=(client_socket, (host, port)),
+                daemon=True
+            )
+            client_thread.start()
+
+            # 发布连接事件
+            self._publish_event(Event(
+                type=EventType.MACHINE_CONNECTED,
+                machine_id=machine_id,
+                app_name=None,
+                timestamp=time.time(),
+                data={"address": (host, port)},
+                source_machine=self.server_id
+            ))
+
+            return {"success": True, "message": f"成功连接到机器 {machine_id}"}
+
+        except Exception as e:
+            return {"success": False, "error": f"连接失败: {str(e)}"}
+
+    def disconnect_machine(self, machine_id: str) -> Dict:
+        """主动断开与机器的连接"""
+        if machine_id not in self.machines:
+            return {"success": False, "error": f"机器 {machine_id} 未连接"}
+
+        self._disconnect_machine(machine_id)
+        return {"success": True, "message": f"已断开与机器 {machine_id} 的连接"}
     
     def _handle_request(self, machine_id: str, request: Dict) -> Dict:
         """处理来自机器的请求"""
