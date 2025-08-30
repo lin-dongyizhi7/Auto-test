@@ -1,53 +1,55 @@
 <template>
   <div class="operation-page">
-    <!-- 服务端测试服务器控制面板 -->
-    <el-card class="connection-panel" shadow="hover">
+    <!-- 服务端测试服务器状态面板 -->
+    <el-card class="status-panel" shadow="hover">
       <template #header>
         <div class="card-header">
-          <span>测试服务器（服务端内置）</span>
+          <span>测试服务器状态</span>
           <el-tag :type="isConnected ? 'success' : 'danger'" size="small">
             {{ isConnected ? '已连接' : '未连接' }}
           </el-tag>
         </div>
       </template>
       
-      <el-form :model="connectionForm" label-width="100px" inline>
-        <el-form-item label="监听端口">
-          <el-input-number 
-            v-model="connectionForm.port" 
-            :min="1" 
-            :max="65535"
-            :disabled="isConnected"
-          />
-        </el-form-item>
-        <el-form-item>
-          <el-button 
-            v-if="!isConnected"
-            type="primary" 
-            @click="handleConnect"
-            :loading="connecting"
-          >
-            启动测试服务器
-          </el-button>
-          <el-button 
-            v-else
-            type="danger" 
-            @click="handleDisconnect"
-          >
-            停止测试服务器
-          </el-button>
-          <el-button 
-            type="success"
-            @click="openNewConnectionDialog"
-            style="margin-left: 10px;"
-          >
-            新建连接
-          </el-button>
-        </el-form-item>
-      </el-form>
+      <el-descriptions :column="3" border>
+        <el-descriptions-item label="监听端口">
+          {{ connectionForm.port }}
+        </el-descriptions-item>
+        <el-descriptions-item label="当前目标">
+          {{ currentTarget ? `${currentTarget.machine_id} / ${currentTarget.app_name}` : '未设置' }}
+        </el-descriptions-item>
+        <el-descriptions-item label="可用机器">
+          {{ availableMachines.length }} 台
+        </el-descriptions-item>
+      </el-descriptions>
+      
+      <div class="status-actions">
+        <el-button 
+          v-if="!isConnected"
+          type="primary" 
+          @click="handleConnect"
+          :loading="connecting"
+        >
+          启动测试服务器
+        </el-button>
+        <el-button 
+          v-else
+          type="danger" 
+          @click="handleDisconnect"
+        >
+          停止测试服务器
+        </el-button>
+        <el-button 
+          type="success"
+          @click="refreshStatus"
+          :disabled="!isConnected"
+        >
+          刷新状态
+        </el-button>
+      </div>
     </el-card>
 
-    <!-- 多机器多应用管理面板 -->
+    <!-- 目标机器和应用选择面板 -->
     <el-card v-if="isConnected" class="target-panel" shadow="hover">
       <template #header>
         <div class="card-header">
@@ -118,16 +120,6 @@
           </el-form-item>
         </el-col>
       </el-row>
-      
-      <!-- 刷新按钮 -->
-      <div class="refresh-actions">
-        <el-button @click="refreshMachines" :loading="loadingMachines">
-          刷新机器列表
-        </el-button>
-        <el-button @click="refreshApps" :loading="loadingApps" :disabled="!selectedMachineId">
-          刷新应用列表
-        </el-button>
-      </div>
     </el-card>
 
     <!-- 操作控制面板 -->
@@ -284,7 +276,7 @@
       </el-col>
     </el-row>
 
-    <!-- 快捷键操作面板 -->
+    <!-- 快捷键操作和截图面板 -->
     <el-row v-if="isTargetSet" :gutter="20" class="operation-panels">
       <el-col :span="12">
         <el-card class="operation-panel" shadow="hover">
@@ -358,59 +350,124 @@
       </el-col>
     </el-row>
 
+    <!-- 机器视图监控面板 -->
+    <el-card v-if="isConnected && availableMachines.length > 0" class="machine-view-panel" shadow="hover">
+      <template #header>
+        <div class="card-header">
+          <span>机器视图监控</span>
+          <div class="view-controls">
+            <el-button 
+              size="small" 
+              @click="previousMachine" 
+              :disabled="currentMachineIndex === 0"
+            >
+              <el-icon><ArrowLeft /></el-icon>
+              上一个
+            </el-button>
+            <span class="machine-counter">
+              {{ currentMachineIndex + 1 }} / {{ availableMachines.length }}
+            </span>
+            <el-button 
+              size="small" 
+              @click="nextMachine"
+              :disabled="currentMachineIndex === availableMachines.length - 1"
+            >
+              下一个
+              <el-icon><ArrowRight /></el-icon>
+            </el-button>
+          </div>
+        </div>
+      </template>
+      
+      <div class="machine-view-content">
+        <div class="current-machine-info">
+          <el-tag size="large" type="primary">
+            {{ currentViewMachine?.address || '未知机器' }}
+          </el-tag>
+          <el-tag size="large" type="info">
+            ID: {{ currentViewMachine?.id || 'N/A' }}
+          </el-tag>
+        </div>
+        
+        <div class="machine-apps-grid">
+          <div 
+            v-for="app in currentViewMachineApps" 
+            :key="app.id"
+            class="app-card"
+            :class="{ 'current-target': isCurrentTarget(app) }"
+            @click="setAsTarget(app)"
+          >
+            <div class="app-header">
+              <el-tag 
+                :type="getAppStatusType(app.status)" 
+                size="small"
+              >
+                {{ app.status || 'running' }}
+              </el-tag>
+              <span class="app-name">{{ app.name }}</span>
+            </div>
+            <div class="app-details">
+              <span class="app-region" v-if="app.region">
+                区域: {{ app.region }}
+              </span>
+              <span class="app-machine-id">
+                机器: {{ app.machine_id }}
+              </span>
+            </div>
+            <div class="app-actions">
+              <el-button 
+                size="small" 
+                type="primary"
+                @click.stop="takeMachineScreenshot(app)"
+              >
+                截图
+              </el-button>
+            </div>
+          </div>
+        </div>
+        
+        <div v-if="currentViewMachineApps.length === 0" class="no-apps">
+          <el-empty description="该机器暂无可用应用" />
+        </div>
+      </div>
+    </el-card>
+
     <!-- 操作日志面板 -->
-    <el-card v-if="isConnected" class="log-panel" shadow="hover">
+    <el-card class="log-panel" shadow="hover">
       <template #header>
         <div class="card-header">
           <span>操作日志</span>
-          <el-button size="small" @click="clearLogs">清空日志</el-button>
+          <div class="log-actions">
+            <el-button size="small" @click="refreshLogs">刷新</el-button>
+            <el-button size="small" @click="clearLogs">清空日志</el-button>
+          </div>
         </div>
       </template>
       
       <div class="log-content">
+        <div v-if="operationLogs.length === 0" class="no-logs">
+          <el-empty description="暂无操作日志" />
+        </div>
         <div 
+          v-else
           v-for="(log, index) in operationLogs" 
           :key="index"
           class="log-entry"
         >
-          {{ log }}
+          <span class="log-time">{{ formatLogTime(log) }}</span>
+          <span class="log-message">{{ log }}</span>
         </div>
       </div>
     </el-card>
-    <!-- 新建连接对话框 -->
-    <el-dialog
-      v-model="newConnDialogVisible"
-      title="新建连接"
-      width="520px"
-      :close-on-click-modal="false"
-    >
-      <el-form :model="newConnForm" :rules="newConnRules" ref="newConnFormRef" label-width="90px">
-        <el-form-item label="目标IP" prop="host">
-          <el-input v-model="newConnForm.host" placeholder="例如 192.168.1.101" />
-        </el-form-item>
-        <el-form-item label="端口" prop="port">
-          <el-input-number v-model="newConnForm.port" :min="1" :max="65535" />
-        </el-form-item>
-        <el-form-item label="应用名" prop="app">
-          <el-input v-model="newConnForm.app" placeholder="例如 calculator" />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <span class="dialog-footer">
-          <el-button @click="newConnDialogVisible = false">取消</el-button>
-          <el-button type="primary" @click="confirmNewConnection" :loading="creatingConnection">确定</el-button>
-        </span>
-      </template>
-    </el-dialog>
-
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
+import { ElMessage } from 'element-plus'
 import { useOperationStore } from '@/stores/operation'
 import type { MachineAppTarget } from '@/api/types'
+import { ArrowLeft, ArrowRight } from '@element-plus/icons-vue'
 
 const store = useOperationStore()
 
@@ -451,21 +508,6 @@ const hotkeyForm = ref({
   keys: [] as string[]
 })
 
-// 新建连接对话框
-const newConnDialogVisible = ref(false)
-const creatingConnection = ref(false)
-const newConnFormRef = ref<FormInstance>()
-const newConnForm = ref({
-  host: '',
-  port: 8889,
-  app: ''
-})
-const newConnRules: FormRules = {
-  host: [{ required: true, message: '请输入目标IP', trigger: 'blur' }],
-  port: [{ required: true, message: '请输入端口', trigger: 'change' }],
-  app: [{ required: true, message: '请输入应用名', trigger: 'blur' }]
-}
-
 // 计算属性
 const isConnected = computed(() => store.isConnected)
 const connecting = computed(() => store.connecting)
@@ -499,42 +541,17 @@ const handleDisconnect = async () => {
   }
 }
 
-const openNewConnectionDialog = () => {
-  newConnDialogVisible.value = true
-}
-
-const confirmNewConnection = async () => {
-  if (!newConnFormRef.value) return
-  await newConnFormRef.value.validate(async (valid) => {
-    if (!valid) return
-    try {
-      creatingConnection.value = true
-      // 确保后端内置测试服务器已启动
-      if (!isConnected.value) {
-        const ok = await store.startServer(connectionForm.value.port)
-        if (!ok) {
-          ElMessage.error('启动测试服务器失败')
-          return
-        }
-      }
-
-      // 依据输入构造 machine_id（此处用IP:port 简化）
-      const machineId = `${newConnForm.value.host}:${newConnForm.value.port}`
-      const target: MachineAppTarget = { machine_id: machineId, app_name: newConnForm.value.app }
-
-      const success = await store.setCurrentTarget(target)
-      if (success) {
-        ElMessage.success('连接已建立并设置为当前目标')
-        selectedMachineId.value = target.machine_id
-        selectedAppName.value = target.app_name
-        newConnDialogVisible.value = false
-      } else {
-        ElMessage.error('设置目标失败，请确认被测机已注册到测试服务器')
-      }
-    } finally {
-      creatingConnection.value = false
+const refreshStatus = async () => {
+  try {
+    await store.refreshConnectionStatus()
+    if (isConnected.value) {
+      await store.refreshMachines()
+      await store.refreshCurrentTarget()
     }
-  })
+    ElMessage.success('状态已刷新')
+  } catch (error) {
+    ElMessage.error(`刷新状态失败: ${error instanceof Error ? error.message : '未知错误'}`)
+  }
 }
 
 const handleMachineChange = async () => {
@@ -564,16 +581,6 @@ const handleSetTarget = async () => {
     ElMessage.success('设置目标成功')
   } else {
     ElMessage.error('设置目标失败')
-  }
-}
-
-const refreshMachines = async () => {
-  await store.refreshMachines()
-}
-
-const refreshApps = async () => {
-  if (selectedMachineId.value) {
-    await store.refreshApps(selectedMachineId.value)
   }
 }
 
@@ -680,8 +687,84 @@ const handleTakeScreenshot = async () => {
   }
 }
 
+const refreshLogs = () => {
+  // 刷新日志的逻辑
+  ElMessage.success('日志已刷新')
+}
+
 const clearLogs = () => {
   store.clearLogs()
+}
+
+const formatLogTime = (log: string) => {
+  const timeMatch = log.match(/\[(.*?)\]/)
+  return timeMatch ? timeMatch[1] : ''
+}
+
+// 机器视图相关
+const currentMachineIndex = ref(0)
+const currentViewMachine = computed(() => availableMachines.value[currentMachineIndex.value])
+const currentViewMachineApps = computed(() => {
+  if (!currentViewMachine.value) return []
+  return store.availableApps.filter((app: any) => app.machine_id === currentViewMachine.value.id)
+})
+
+const isCurrentTarget = (app: { machine_id: string; name: string }) => {
+  return currentTarget.value?.machine_id === app.machine_id && currentTarget.value?.app_name === app.name
+}
+
+const setAsTarget = async (app: { machine_id: string; name: string }) => {
+  const target: MachineAppTarget = {
+    machine_id: app.machine_id,
+    app_name: app.name
+  }
+  const success = await store.setCurrentTarget(target)
+  if (success) {
+    ElMessage.success(`已设置目标为: ${app.machine_id} / ${app.name}`)
+  } else {
+    ElMessage.error('设置目标失败')
+  }
+}
+
+const takeMachineScreenshot = async (app: { machine_id: string; name: string }) => {
+  try {
+    // 先设置目标，再截图
+    const target: MachineAppTarget = {
+      machine_id: app.machine_id,
+      app_name: app.name
+    }
+    await store.setCurrentTarget(target)
+    const result = await store.takeScreenshot()
+    if (result) {
+      ElMessage.success('截图成功')
+    }
+  } catch (error) {
+    ElMessage.error('截图失败')
+  }
+}
+
+const getAppStatusType = (status: string): 'success' | 'danger' | 'warning' | 'info' => {
+  const statusMap: Record<string, 'success' | 'danger' | 'warning' | 'info'> = {
+    running: 'success',
+    stopped: 'danger',
+    starting: 'warning',
+    error: 'danger'
+  }
+  return statusMap[status] || 'info'
+}
+
+const previousMachine = () => {
+  currentMachineIndex.value--
+  if (currentMachineIndex.value < 0) {
+    currentMachineIndex.value = availableMachines.value.length - 1
+  }
+}
+
+const nextMachine = () => {
+  currentMachineIndex.value++
+  if (currentMachineIndex.value >= availableMachines.value.length) {
+    currentMachineIndex.value = 0
+  }
 }
 
 // 生命周期
@@ -694,10 +777,11 @@ onMounted(async () => {
 .operation-page {
   padding: 20px;
   
-  .connection-panel,
+  .status-panel,
   .target-panel,
   .operation-panel,
-  .log-panel {
+  .log-panel,
+  .machine-view-panel {
     margin-bottom: 20px;
   }
   
@@ -707,7 +791,7 @@ onMounted(async () => {
     align-items: center;
   }
   
-  .refresh-actions {
+  .status-actions {
     margin-top: 15px;
     text-align: center;
     
@@ -719,21 +803,132 @@ onMounted(async () => {
   .operation-panels {
     margin-bottom: 20px;
   }
+
+  .machine-view-panel {
+    .view-controls {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .machine-counter {
+      font-size: 14px;
+      color: #606266;
+    }
+
+    .machine-view-content {
+      padding: 15px;
+    }
+
+    .current-machine-info {
+      text-align: center;
+      margin-bottom: 15px;
+      .el-tag {
+        margin-right: 10px;
+      }
+    }
+
+    .machine-apps-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+      gap: 15px;
+      margin-bottom: 15px;
+    }
+
+    .app-card {
+      border: 1px solid #ebeef5;
+      border-radius: 8px;
+      padding: 15px;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+
+      &:hover {
+        border-color: #409eff;
+        box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+      }
+
+      &.current-target {
+        border-color: #67c23a;
+        box-shadow: 0 0 10px rgba(103, 194, 58, 0.3);
+      }
+    }
+
+    .app-header {
+      display: flex;
+      align-items: center;
+      margin-bottom: 10px;
+      .el-tag {
+        margin-right: 8px;
+      }
+      .app-name {
+        font-size: 16px;
+        font-weight: bold;
+        color: #303133;
+      }
+    }
+
+    .app-details {
+      font-size: 13px;
+      color: #909399;
+      margin-bottom: 10px;
+      .app-region {
+        margin-right: 10px;
+      }
+    }
+
+    .app-actions {
+      text-align: right;
+      margin-top: 10px;
+    }
+
+    .no-apps {
+      text-align: center;
+      padding: 40px 0;
+    }
+  }
+  
+  .log-panel {
+    .log-actions {
+      display: flex;
+      gap: 10px;
+    }
+  }
   
   .log-content {
-    max-height: 300px;
+    max-height: 400px;
     overflow-y: auto;
     border: 1px solid #ebeef5;
     border-radius: 4px;
     padding: 10px;
     background-color: #fafafa;
     
+    .no-logs {
+      text-align: center;
+      padding: 40px 0;
+    }
+    
     .log-entry {
       font-family: 'Courier New', monospace;
       font-size: 12px;
       line-height: 1.5;
-      margin-bottom: 5px;
+      margin-bottom: 8px;
       word-break: break-all;
+      display: flex;
+      gap: 10px;
+      
+      .log-time {
+        color: #909399;
+        min-width: 120px;
+        flex-shrink: 0;
+      }
+      
+      .log-message {
+        color: #303133;
+        flex: 1;
+      }
     }
   }
   

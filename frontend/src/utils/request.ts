@@ -1,3 +1,11 @@
+/*
+ * @Author: 凛冬已至 2985956026@qq.com
+ * @Date: 2025-08-01 14:55:25
+ * @LastEditors: 凛冬已至 2985956026@qq.com
+ * @LastEditTime: 2025-08-30 11:03:16
+ * @FilePath: \Auto-test\frontend\src\utils\request.ts
+ * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
+ */
 import axios from 'axios'
 import type { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios'
 import { ElMessage } from 'element-plus'
@@ -30,7 +38,7 @@ request.interceptors.response.use(
   (response: AxiosResponse) => {
     // 对响应数据做点什么
     console.log('收到响应:', response.data)
-    return response
+    return response.data
   },
   (error) => {
     // 对响应错误做点什么

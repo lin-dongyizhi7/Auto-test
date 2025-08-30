@@ -324,4 +324,10 @@ onMounted(async () => {
   .machine-meta { margin-top: 8px; color: #909399; display: flex; justify-content: space-between; }
   .machine-actions { margin-top: 10px; text-align: right; }
 }
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
 </style> 

@@ -74,6 +74,7 @@ export const useOperationStore = defineStore('operation', () => {
     try {
       connecting.value = true
       const response = await connectToTestServer(config)
+      console.log(response);
       
       if (response.success) {
         isConnected.value = true

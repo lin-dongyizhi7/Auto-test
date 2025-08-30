@@ -66,20 +66,54 @@
             {{ formatTime(row.updatedAt) }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="200" fixed="right">
+        <el-table-column label="操作" width="160" fixed="right">
           <template #default="{ row }">
-            <el-button size="small" @click="onRunScript(row)" :loading="row.status === 'running'">
-              运行
-            </el-button>
-            <el-button size="small" @click="editScript(row)">
-              编辑
-            </el-button>
-            <el-button size="small" @click="onExportScript(row)">
-              导出
-            </el-button>
-            <el-button size="small" type="danger" @click="onDeleteScript(row)">
-              删除
-            </el-button>
+            <div class="action-buttons">
+              <el-tooltip content="运行脚本" placement="top">
+                <el-button 
+                  type="primary" 
+                  size="small" 
+                  circle
+                  @click="onRunScript(row)" 
+                  :loading="row.status === 'running'"
+                >
+                  <el-icon><VideoPlay /></el-icon>
+                </el-button>
+              </el-tooltip>
+              
+              <el-tooltip content="编辑脚本" placement="top">
+                <el-button 
+                  type="warning" 
+                  size="small" 
+                  circle
+                  @click="editScript(row)"
+                >
+                  <el-icon><Edit /></el-icon>
+                </el-button>
+              </el-tooltip>
+              
+              <el-tooltip content="导出脚本" placement="top">
+                <el-button 
+                  type="success" 
+                  size="small" 
+                  circle
+                  @click="onExportScript(row)"
+                >
+                  <el-icon><Download /></el-icon>
+                </el-button>
+              </el-tooltip>
+              
+              <el-tooltip content="删除脚本" placement="top">
+                <el-button 
+                  type="danger" 
+                  size="small" 
+                  circle
+                  @click="onDeleteScript(row)"
+                >
+                  <el-icon><Delete /></el-icon>
+                </el-button>
+              </el-tooltip>
+            </div>
           </template>
         </el-table-column>
       </el-table>
@@ -329,7 +363,7 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted, computed } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
-import { Plus, Upload, Refresh, UploadFilled } from '@element-plus/icons-vue'
+import { Plus, Upload, Refresh, UploadFilled, VideoPlay, Edit, Download, Delete } from '@element-plus/icons-vue'
 import { 
   getScripts as getScriptsApi, 
   getScript as getScriptApi, 
@@ -731,6 +765,16 @@ const editCurrentScript = () => {
   
   .upload-demo {
     width: 100%;
+  }
+  
+  .action-buttons {
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+    
+    .el-button {
+      margin: 0;
+    }
   }
   
   :deep(.el-textarea__inner) {
