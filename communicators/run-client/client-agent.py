@@ -1,4 +1,4 @@
-from ..tested_communicator import TestedMachineCommunicator
+from communicators.tested_communicator import TestedMachineCommunicator
 
 # 启动服务（直接运行该脚本即可）
 if __name__ == "__main__":
