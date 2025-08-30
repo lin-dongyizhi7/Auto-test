@@ -1,4 +1,4 @@
-from operation_multi_machine import MultiMachineOperation
+from ..operation_multi_machine import MultiMachineOperation
 import time
 import logging
 
