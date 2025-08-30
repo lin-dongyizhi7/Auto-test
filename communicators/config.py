@@ -13,7 +13,7 @@ NETWORK_CONFIG = {
     # 测试服务器配置
     "test_server": {
         "host": "0.0.0.0",  # 测试服务器监听地址
-        "port": 8889,        # 测试服务器端口
+        "port": 8888,        # 测试服务器端口
         "max_connections": 10,  # 最大连接数
         "timeout": 30,       # 连接超时时间（秒）
     },
@@ -120,19 +120,19 @@ ENVIRONMENT_CONFIG = {
         "debug": True,
         "log_level": "DEBUG",
         "test_server_host": "localhost",
-        "test_server_port": 8889,
+        "test_server_port": 8888,
     },
     "production": {
         "debug": False,
         "log_level": "WARNING",
         "test_server_host": "192.168.1.100",  # 生产环境服务器地址
-        "test_server_port": 8889,
+        "test_server_port": 8888,
     },
     "testing": {
         "debug": True,
         "log_level": "DEBUG",
         "test_server_host": "localhost",
-        "test_server_port": 8889,
+        "test_server_port": 8888,
     }
 }
 

@@ -25,7 +25,7 @@ class MultiMachineOperation:
     多机器环境下的操作类，支持与多台机器和多个应用进行交互
     """
     
-    def __init__(self, bind_host: str = "0.0.0.0", server_port: int = 8889, retry_interval_sec: int = 3):
+    def __init__(self, bind_host: str = "0.0.0.0", server_port: int = 8888, retry_interval_sec: int = 3):
         """
         初始化多机器操作类，并在本机启动测试服务器（长期监听）
         

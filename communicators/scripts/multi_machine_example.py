@@ -24,7 +24,7 @@ def start_test_server():
     print("启动测试服务器...")
     
     # 创建测试服务器实例
-    server = TestMachineCommunicator(server_host="0.0.0.0", server_port=8889)
+    server = TestMachineCommunicator(server_host="0.0.0.0", server_port=8888)
     
     try:
         # 启动服务器
@@ -69,7 +69,7 @@ def start_test_client(machine_id):
     client = TestedMachineCommunicator(
         bind_port=8888,
         test_server_host="192.168.1.100",  # 配置为实际的测试服务器地址
-        test_server_port=8889,
+        test_server_port=8888,
         machine_id=machine_id
     )
     
@@ -87,7 +87,7 @@ def demo_multi_machine_communication():
     print("演示多机器通信功能...")
     
     # 创建测试服务器连接器（用于测试）
-    server_connector = SingleMachineCommunicator("192.168.1.100", 8889)
+    server_connector = SingleMachineCommunicator("192.168.1.100", 8888)
     
     try:
         # 获取机器列表

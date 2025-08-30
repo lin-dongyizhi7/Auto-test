@@ -9,7 +9,7 @@ import os
 # 基础配置
 class Config:
     # 测试服务器配置
-    DEFAULT_PORT = int(os.getenv("TEST_SERVER_PORT", "8889"))
+    DEFAULT_PORT = int(os.getenv("TEST_SERVER_PORT", "8888"))
     DEFAULT_HOST = os.getenv("TEST_SERVER_HOST", "0.0.0.0")
     
     # 脚本存储配置

@@ -35,7 +35,7 @@ class Event:
 class TestMachineCommunicator:
     """测试者机器的通信类，支持多机器连接、多应用通信和事件同步"""
     
-    def __init__(self, server_host: str = "0.0.0.0", server_port: int = 8889, server_id: str = "test_server"):
+    def __init__(self, server_host: str = "0.0.0.0", server_port: int = 8888, server_id: str = "test_server"):
         self.server_host = server_host
         self.server_port = server_port
         self.server_id = server_id  # 当前服务器标识

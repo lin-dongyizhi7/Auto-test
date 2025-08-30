@@ -38,7 +38,7 @@ export const useOperationStore = defineStore('operation', () => {
   const isConnected = ref(false)
   const connectionConfig = ref<TestServerConnection>({
     host: 'localhost',
-    port: 8889
+            port: 8888
   })
   const connecting = ref(false)
 
@@ -61,7 +61,7 @@ export const useOperationStore = defineStore('operation', () => {
   const isTargetSet = computed(() => !!currentTarget.value)
 
   // 连接管理
-  const startServer = async (port = 8889) => {
+  const startServer = async (port = 8888) => {
     // 服务端模式：调用后端 /connect 启动内置测试服务器
     return await connect({ host: 'server', port })
   }

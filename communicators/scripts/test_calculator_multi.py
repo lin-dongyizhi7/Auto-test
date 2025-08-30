@@ -18,7 +18,7 @@ from ..operation_multi_machine import MultiMachineOperation
 if __name__ == "__main__":
     # 1. 实例化多机器操作类（会自动启动测试服务器）
     print("正在启动多机器测试环境...")
-    op = MultiMachineOperation(bind_host="0.0.0.0", server_port=8889)
+    op = MultiMachineOperation(bind_host="0.0.0.0", server_port=8888)
     print("多机器测试环境启动成功")
     
     # 2. 等待机器和应用连接

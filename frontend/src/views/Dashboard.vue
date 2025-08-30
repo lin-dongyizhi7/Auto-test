@@ -165,7 +165,7 @@
           <el-input v-model="createIp" placeholder="例如 192.168.1.100" />
         </el-form-item>
         <el-form-item label="端口">
-          <el-input v-model.number="createPort" type="number" placeholder="8889" />
+          <el-input v-model.number="createPort" type="number" placeholder="8888" />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -191,7 +191,7 @@ const startTime = ref(Date.now())
 // 新建连接对话框
 const createDialogVisible = ref(false)
 const createIp = ref('')
-const createPort = ref(8889)
+const createPort = ref(8888)
 const creating = ref(false)
 
 // 计算属性
@@ -266,7 +266,7 @@ const handleDisconnectMachine = async (machineId: string) => {
 
 const handleQuickConnect = async () => {
   try {
-    const success = await operationStore.startServer(8889)
+    const success = await operationStore.startServer(8888)
     if (success) ElMessage.success('测试服务器已启动')
     else ElMessage.error('启动测试服务器失败')
   } catch (error) {

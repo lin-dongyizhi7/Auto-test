@@ -186,7 +186,7 @@ interface SystemSettings {
 const settings = ref<SystemSettings>({
   testServer: {
     host: 'localhost',
-    port: 8889,
+    port: 8888,
     timeout: 30,
     retryCount: 3
   },
@@ -234,7 +234,7 @@ const resetSettings = () => {
   settings.value = {
     testServer: {
       host: 'localhost',
-      port: 8889,
+      port: 8888,
       timeout: 30,
       retryCount: 3
     },

@@ -56,12 +56,12 @@ class TestTestMachineCommunicator(unittest.TestCase):
     """测试测试机器通信器"""
     
     def setUp(self):
-        self.communicator = TestMachineCommunicator(server_host="127.0.0.1", server_port=8889)
+        self.communicator = TestMachineCommunicator(server_host="127.0.0.1", server_port=8888)
     
     def test_initialization(self):
         """测试初始化"""
         self.assertEqual(self.communicator.server_host, "127.0.0.1")
-        self.assertEqual(self.communicator.server_port, 8889)
+        self.assertEqual(self.communicator.server_port, 8888)
         self.assertFalse(self.communicator.is_running)
         self.assertEqual(len(self.communicator.machines), 0)
         self.assertEqual(len(self.communicator.apps), 0)
@@ -125,7 +125,7 @@ class TestTestedMachineCommunicator(unittest.TestCase):
         self.communicator = TestedMachineCommunicator(
             bind_port=8888,
             test_server_host="127.0.0.1",
-            test_server_port=8889,
+            test_server_port=8888,
             machine_id="test_machine"
         )
     
@@ -133,7 +133,7 @@ class TestTestedMachineCommunicator(unittest.TestCase):
         """测试初始化"""
         self.assertEqual(self.communicator.bind_port, 8888)
         self.assertEqual(self.communicator.test_server_host, "127.0.0.1")
-        self.assertEqual(self.communicator.test_server_port, 8889)
+        self.assertEqual(self.communicator.test_server_port, 8888)
         self.assertEqual(self.communicator.machine_id, "test_machine")
         self.assertFalse(self.communicator.is_running)
     
@@ -171,13 +171,13 @@ class TestIntegration(unittest.TestCase):
     def test_end_to_end_communication(self):
         """测试端到端通信"""
         # 创建测试服务器
-        server = TestMachineCommunicator(server_host="127.0.0.1", server_port=8889)
+        server = TestMachineCommunicator(server_host="127.0.0.1", server_port=8888)
         
         # 创建被测试机器
         client = TestedMachineCommunicator(
             bind_port=8888,
             test_server_host="127.0.0.1",
-            test_server_port=8889,
+            test_server_port=8888,
             machine_id="test_machine"
         )
         
@@ -214,7 +214,7 @@ def run_performance_test():
     print(f"查找1000个元素耗时: {get_time:.4f}秒")
     
     # 测试事件处理性能
-    communicator = TestMachineCommunicator(server_host="127.0.0.1", server_port=8889)
+    communicator = TestMachineCommunicator(server_host="127.0.0.1", server_port=8888)
     start_time = time.time()
     
     for i in range(1000):

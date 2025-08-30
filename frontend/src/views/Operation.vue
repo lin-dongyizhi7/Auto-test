@@ -474,7 +474,7 @@ const store = useOperationStore()
 // 响应式数据
 const connectionForm = ref({
   host: 'localhost',
-  port: 8889
+  port: 8888
 })
 
 const selectedMachineId = ref('')
