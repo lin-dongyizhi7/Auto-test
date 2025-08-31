@@ -1,0 +1,13 @@
+@echo off
+echo 正在启动自动化测试服务器 VSCode 插件开发环境...
+
+echo 安装依赖...
+npm install
+
+echo 编译插件...
+npm run compile
+
+echo 启动开发模式...
+npm run watch
+
+pause

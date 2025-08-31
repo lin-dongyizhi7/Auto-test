@@ -1,0 +1,141 @@
+{
+    "name": "auto-test-server",
+    "displayName": "自动化测试服务器",
+    "description": "VSCode自动化测试服务器管理和控制扩展",
+    "version": "1.0.0",
+    "publisher": "auto-test",
+    "engines": {
+        "vscode": "^1.60.0"
+    },
+    "categories": [
+        "Testing",
+        "Other"
+    ],
+    "keywords": [
+        "testing",
+        "automation",
+        "dogtail",
+        "multi-machine"
+    ],
+    "activationEvents": [
+        "onCommand:autoTestServer.start",
+        "onCommand:autoTestServer.stop",
+        "onCommand:autoTestServer.showPanel",
+        "onView:testServerPanel"
+    ],
+    "main": "./out/extension.js",
+    "contributes": {
+        "commands": [
+            {
+                "command": "autoTestServer.start",
+                "title": "启动测试服务器",
+                "category": "自动化测试"
+            },
+            {
+                "command": "autoTestServer.stop",
+                "title": "停止测试服务器",
+                "category": "自动化测试"
+            },
+            {
+                "command": "autoTestServer.showPanel",
+                "title": "显示测试控制台",
+                "category": "自动化测试"
+            },
+            {
+                "command": "autoTestServer.executeTest",
+                "title": "执行测试脚本",
+                "category": "自动化测试"
+            },
+            {
+                "command": "autoTestServer.connectMachine",
+                "title": "连接测试机器",
+                "category": "自动化测试"
+            }
+        ],
+        "views": {
+            "explorer": [
+                {
+                    "id": "testServerPanel",
+                    "name": "测试服务器",
+                    "when": "true"
+                }
+            ]
+        },
+        "viewsContainers": {
+            "activitybar": [
+                {
+                    "id": "testServer",
+                    "title": "测试服务器",
+                    "icon": "resources/icon.svg"
+                }
+            ]
+        },
+        "views": {
+            "testServer": [
+                {
+                    "id": "testServerPanel",
+                    "name": "测试控制台",
+                    "when": "true"
+                }
+            ]
+        },
+        "menus": {
+            "view/title": [
+                {
+                    "command": "autoTestServer.start",
+                    "when": "view == testServerPanel",
+                    "group": "navigation"
+                },
+                {
+                    "command": "autoTestServer.stop",
+                    "when": "view == testServerPanel",
+                    "group": "navigation"
+                }
+            ],
+            "view/item/context": [
+                {
+                    "command": "autoTestServer.executeTest",
+                    "when": "view == testServerPanel",
+                    "group": "inline"
+                }
+            ]
+        },
+        "configuration": {
+            "title": "自动化测试服务器",
+            "properties": {
+                "autoTestServer.host": {
+                    "type": "string",
+                    "default": "0.0.0.0",
+                    "description": "测试服务器绑定地址"
+                },
+                "autoTestServer.port": {
+                    "type": "number",
+                    "default": 8888,
+                    "description": "测试服务器端口"
+                },
+                "autoTestServer.retryInterval": {
+                    "type": "number",
+                    "default": 3,
+                    "description": "启动失败重试间隔(秒)"
+                }
+            }
+        }
+    },
+    "scripts": {
+        "vscode:prepublish": "npm run compile",
+        "compile": "tsc -p ./",
+        "watch": "tsc -watch -p ./",
+        "lint": "eslint src --ext ts"
+    },
+    "devDependencies": {
+        "@types/vscode": "^1.60.0",
+        "@types/node": "^16.0.0",
+        "@typescript-eslint/eslint-plugin": "^5.0.0",
+        "@typescript-eslint/parser": "^5.0.0",
+        "eslint": "^8.0.0",
+        "typescript": "^4.5.0"
+    },
+    "dependencies": {
+        "ws": "^8.0.0"
+    }
+}
