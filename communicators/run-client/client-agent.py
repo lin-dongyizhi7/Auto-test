@@ -6,7 +6,7 @@ if __name__ == "__main__":
     communicator = TestedMachineCommunicator(
         bind_port=8888,
         test_server_host="192.168.44.1",  # 配置测试服务器地址
-        test_server_port=8889,
+        test_server_port=8888,
         machine_id="test_machine_001"  # 配置机器ID
     )
     

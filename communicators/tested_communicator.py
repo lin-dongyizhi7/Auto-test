@@ -61,21 +61,16 @@ class TestedMachineCommunicator:
     """被测试机器的通信类，支持多应用通信和事件同步"""
     
     def __init__(self, bind_host: str = "0.0.0.0", bind_port: int = 8888, 
-                 test_server_host: str = None, test_server_port: int = 8889,
                  machine_id: str = None, cache_capacity: int = 20):
         """
         初始化通信服务
         :param bind_host: 绑定的IP地址（0.0.0.0表示允许所有网络连接）
         :param bind_port: 监听的端口（默认8888）
-        :param test_server_host: 测试服务器地址（用于事件同步）
-        :param test_server_port: 测试服务器端口
         :param machine_id: 机器唯一标识符
         :param cache_capacity: 元素缓存的最大容量
         """
         self.bind_host = bind_host
         self.bind_port = bind_port
-        self.test_server_host = test_server_host
-        self.test_server_port = test_server_port
         self.machine_id = machine_id or f"machine_{random.randint(1000, 9999)}"
         
         # 本地服务
@@ -88,11 +83,12 @@ class TestedMachineCommunicator:
         self.app_regions: Dict[str, List[int]] = {}  # app_name -> region
         self.element_caches: Dict[str, LRUCache] = {}  # app_name -> cache
         
-        # 测试服务器连接
+        # 测试服务器连接（被动模式）
         self.test_server_socket = None
         self.test_server_connected = False
         self.test_server_thread = None
         self.test_server_send_lock = threading.Lock()
+        self.test_server_connection_info = None  # 存储测试服务器连接信息
         
         # 事件同步
         self.event_queue = queue.Queue()
@@ -373,56 +369,88 @@ class TestedMachineCommunicator:
             "results": results
         }
 
-    def connect_to_test_server(self) -> bool:
-        """连接到测试服务器"""
-        if not self.test_server_host:
-            print("未配置测试服务器地址，跳过连接")
-            return False
-            
+    def _handle_test_server_connection(self, client_socket: socket.socket, client_addr: tuple) -> bool:
+        """
+        处理测试服务器的连接请求，验证IP和端口
+        :param client_socket: 客户端socket
+        :param client_addr: 客户端地址 (ip, port)
+        :return: 是否接受连接
+        """
         try:
-            self.test_server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self.test_server_socket.connect((self.test_server_host, self.test_server_port))
-            self.test_server_connected = True
+            # 接收连接验证请求
+            request_data = client_socket.recv(1024).decode('utf-8')
+            if not request_data:
+                return False
             
-            # 发送机器注册信息
-            register_info = {
-                "machine_id": self.machine_id,
-                "machine_info": {
-                    "host": self.bind_host,
-                    "port": self.bind_port,
-                    "platform": "linux",
-                    "timestamp": time.time()
+            request = json.loads(request_data)
+            if request.get("type") != "connection_request":
+                print(f"收到来自 {client_addr} 的无效连接请求类型: {request.get('type')}")
+                return False
+            
+            # 验证连接信息
+            connection_data = request.get("data", {})
+            server_host = connection_data.get("server_host")
+            server_port = connection_data.get("server_port")
+            
+            if not server_host or not server_port:
+                print(f"连接请求缺少必要信息: server_host={server_host}, server_port={server_port}")
+                return False
+            
+            # 验证IP地址（允许本地连接和指定IP）
+            allowed_hosts = ["127.0.0.1", "localhost", "0.0.0.0"]
+            if server_host not in allowed_hosts and not server_host.startswith("192.168."):
+                print(f"拒绝来自 {client_addr} 的连接，IP地址 {server_host} 不在允许列表中")
+                return False
+            
+            # 验证端口（通常测试服务器使用8888端口）
+            if server_port != 8888:
+                print(f"拒绝来自 {client_addr} 的连接，端口 {server_port} 不在允许列表中")
+                return False
+            
+            print(f"验证通过，接受来自测试服务器 {client_addr} 的连接")
+            
+            # 存储连接信息
+            self.test_server_connection_info = {
+                "host": server_host,
+                "port": server_port,
+                "client_addr": client_addr
+            }
+            
+            # 发送连接确认
+            response = {
+                "type": "connection_response",
+                "success": True,
+                "data": {
+                    "machine_id": self.machine_id,
+                    "machine_info": {
+                        "host": self.bind_host,
+                        "port": self.bind_port,
+                        "platform": "linux",
+                        "timestamp": time.time()
+                    }
                 }
             }
-            with self.test_server_send_lock:
-                self.test_server_socket.sendall(json.dumps(register_info).encode('utf-8'))
+            client_socket.sendall(json.dumps(response).encode('utf-8'))
             
-            # 接收注册响应
-            response_data = self.test_server_socket.recv(1024).decode('utf-8')
-            response = json.loads(response_data)
+            # 设置测试服务器连接
+            self.test_server_socket = client_socket
+            self.test_server_connected = True
             
-            if response.get("success"):
-                print(f"成功连接到测试服务器 {self.test_server_host}:{self.test_server_port}")
-                
-                # 启动测试服务器通信线程
-                self.test_server_thread = threading.Thread(target=self._test_server_communication, daemon=True)
-                self.test_server_thread.start()
-
-                # 将已注册的应用同步到测试服务器
-                try:
-                    for app_name, app in self.apps.items():
-                        self._register_app_to_server(app_name, app.get("info", {}))
-                except Exception as e:
-                    print(f"同步已注册应用到测试服务器失败: {str(e)}")
-                
-                return True
-            else:
-                print(f"连接测试服务器失败: {response.get('error')}")
-                return False
-                
+            # 启动测试服务器通信线程
+            self.test_server_thread = threading.Thread(target=self._test_server_communication, daemon=True)
+            self.test_server_thread.start()
+            
+            # 将已注册的应用同步到测试服务器
+            try:
+                for app_name, app in self.apps.items():
+                    self._register_app_to_server(app_name, app.get("info", {}))
+            except Exception as e:
+                print(f"同步已注册应用到测试服务器失败: {str(e)}")
+            
+            return True
+            
         except Exception as e:
-            print(f"连接测试服务器失败: {str(e)}")
-            self.test_server_connected = False
+            print(f"处理测试服务器连接请求失败: {str(e)}")
             return False
 
     def _test_server_communication(self) -> None:
@@ -629,9 +657,8 @@ class TestedMachineCommunicator:
                 # 否则监控所有可用应用
                 print("未指定应用，将监控所有可用应用")
 
-            # 尝试连接到测试服务器
-            if self.test_server_host:
-                self.connect_to_test_server()
+            # 不再主动连接测试服务器，等待测试服务器主动连接
+            print("等待测试服务器主动连接...")
 
             # 循环处理客户端连接
             while self.is_running:
@@ -653,6 +680,58 @@ class TestedMachineCommunicator:
 
     def _handle_client_connection(self, client_socket: socket.socket, client_addr: tuple) -> None:
         """处理客户端连接"""
+        try:
+            # 首先检查是否是测试服务器的连接请求
+            if self._is_test_server_connection_request(client_addr):
+                if self._handle_test_server_connection(client_socket, client_addr):
+                    # 测试服务器连接成功，保持连接
+                    self._maintain_test_server_connection(client_socket, client_addr)
+                else:
+                    # 测试服务器连接失败，关闭连接
+                    client_socket.close()
+                return
+            
+            # 处理普通客户端连接
+            self._handle_regular_client_connection(client_socket, client_addr)
+
+        except Exception as e:
+            print(f"处理客户端连接失败: {str(e)}")
+            client_socket.close()
+
+    def _is_test_server_connection_request(self, client_addr: tuple) -> bool:
+        """判断是否是测试服务器的连接请求"""
+        # 检查IP地址是否在允许的测试服务器范围内
+        client_ip = client_addr[0]
+        allowed_hosts = ["127.0.0.1", "localhost", "0.0.0.0"]
+        return client_ip in allowed_hosts or client_ip.startswith("192.168.")
+
+    def _maintain_test_server_connection(self, client_socket: socket.socket, client_addr: tuple) -> None:
+        """维护与测试服务器的连接"""
+        try:
+            while self.test_server_connected and self.is_running:
+                # 接收来自测试服务器的请求
+                request_data = client_socket.recv(1024 * 1024).decode('utf-8')
+                if not request_data:
+                    print(f"测试服务器 {client_addr} 主动断开连接")
+                    break
+
+                request = json.loads(request_data)
+                response = self._handle_test_server_request(request)
+                
+                # 发送响应
+                with self.test_server_send_lock:
+                    client_socket.sendall(json.dumps(response).encode('utf-8'))
+
+        except Exception as e:
+            print(f"与测试服务器 {client_addr} 通信时发生错误: {str(e)}")
+        finally:
+            self.test_server_connected = False
+            if self.test_server_socket == client_socket:
+                self.test_server_socket = None
+            print(f"与测试服务器 {client_addr} 的连接已断开")
+
+    def _handle_regular_client_connection(self, client_socket: socket.socket, client_addr: tuple) -> None:
+        """处理普通客户端连接"""
         try:
             # 保持连接，循环处理请求
             while self.is_running:
@@ -731,6 +810,21 @@ class TestedMachineCommunicator:
         finally:
             client_socket.close()
             print(f"与 {client_addr} 的连接已关闭")
+
+    def get_test_server_status(self) -> Dict:
+        """获取测试服务器连接状态"""
+        if not self.test_server_connected:
+            return {
+                "connected": False,
+                "message": "未连接"
+            }
+        
+        return {
+            "connected": True,
+            "message": "已连接",
+            "server_info": self.test_server_connection_info,
+            "machine_id": self.machine_id
+        }
 
     def stop(self) -> None:
         """停止通信服务"""
