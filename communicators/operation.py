@@ -2,7 +2,7 @@ import json
 import time
 import logging
 from typing import Dict, List, Optional
-from test_communicator import TestMachineCommunicator
+from .test_communicator import SingleMachineCommunicator
 
 class Operation:
     """
@@ -19,7 +19,7 @@ class Operation:
         self.opts = []  # 存储单个操作的指令序列
         self.commands_list = []  # 存储整个测试文件生成的指令列表
         # 初始化通信类，建立连接
-        self.communicator = TestMachineCommunicator(test_machine_ip, test_machine_port)
+        self.communicator = SingleMachineCommunicator(test_machine_ip, test_machine_port)
 
         logging.basicConfig(
             level=logging.INFO,

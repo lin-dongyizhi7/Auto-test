@@ -253,9 +253,9 @@ class AutoTestApp:
         self.setup_log_tab()
         
         # 底部状态栏
-        self.setup_status_bar()
+        self.setup_status_bar(main_frame)
         
-    def setup_status_bar(self):
+    def setup_status_bar(self, main_frame):
         """设置底部状态栏"""
         status_bar = ttk.Frame(main_frame)
         status_bar.pack(fill=tk.X, pady=(10, 0))
