@@ -34,7 +34,7 @@ class AgentUI(tk.Tk):
         ttk.Entry(control_frame, textvariable=self.mid_var, width=20).grid(row=0, column=3, padx=4, pady=4)
 
         ttk.Label(control_frame, text="Apps (space separated):").grid(row=0, column=4, padx=4, pady=4, sticky=tk.W)
-        self.apps_var = tk.StringVar(value="calculator gedit")
+        self.apps_var = tk.StringVar(value="")
         ttk.Entry(control_frame, textvariable=self.apps_var, width=28).grid(row=0, column=5, padx=4, pady=4)
 
         self.preload_var = tk.BooleanVar(value=True)
@@ -45,7 +45,7 @@ class AgentUI(tk.Tk):
 
         cfg_frame = ttk.Frame(control_frame)
         cfg_frame.grid(row=1, column=0, columnspan=9, sticky=tk.W, padx=4, pady=4)
-        self.config_path_var = tk.StringVar(value=os.path.join(os.path.dirname(os.path.dirname(__file__)), "common_components.json"))
+        self.config_path_var = tk.StringVar(value=os.path.join(os.path.dirname(__file__), "preload", "common_components.json"))
         ttk.Label(cfg_frame, text="Components JSON:").pack(side=tk.LEFT)
         ttk.Entry(cfg_frame, textvariable=self.config_path_var, width=80).pack(side=tk.LEFT, padx=6)
         ttk.Button(cfg_frame, text="Browse", command=self._browse_json).pack(side=tk.LEFT)
@@ -79,10 +79,27 @@ class AgentUI(tk.Tk):
         self.communicator = TestedMachineCommunicator(bind_port=port, machine_id=self.mid_var.get())
         self.running = True
 
-        # Load config if preload enabled
+        # Load config if preload enabled (scan preload when path missing)
         if self.preload_var.get():
             cfg = self.config_path_var.get()
-            if os.path.exists(cfg):
+            if not cfg or not os.path.exists(cfg):
+                preload_dir = os.path.join(os.path.dirname(__file__), "preload")
+                candidates = []
+                try:
+                    if os.path.isdir(preload_dir):
+                        for fname in os.listdir(preload_dir):
+                            if fname.lower().endswith(".json"):
+                                candidates.append(os.path.join(preload_dir, fname))
+                except Exception:
+                    candidates = []
+                if candidates:
+                    cfg = candidates[0]
+                    self.config_path_var.set(cfg)
+                    self._append_event_line({"type": "ui", "data": {"msg": f"Auto-selected config: {os.path.basename(cfg)}"}})
+                else:
+                    self._append_event_line({"type": "ui", "data": {"msg": "No JSON found under preload; disable preload"}})
+                    self.preload_var.set(False)
+            if self.preload_var.get() and os.path.exists(cfg):
                 ok = self.communicator.load_common_components(cfg)
                 self._append_event_line({"type": "ui", "data": {"msg": f"Load components: {'OK' if ok else 'FAILED'}"}})
 

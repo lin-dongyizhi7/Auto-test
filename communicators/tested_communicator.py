@@ -861,8 +861,24 @@ class TestedMachineCommunicator:
                 for app_name in app_names:
                     self.register_app(app_name)
             else:
-                # 否则监控所有可用应用
+                # 否则监控所有可用应用，并输出当前可检测到的应用列表
                 print("未指定应用，将监控所有可用应用")
+                try:
+                    # 尝试列出可用应用名称
+                    apps = []
+                    root = dogtail.tree.root
+                    for child in getattr(root, 'children', []) or []:
+                        name = getattr(child, 'name', None)
+                        if name:
+                            apps.append(name)
+                    if apps:
+                        print("当前可用应用列表:")
+                        for idx, nm in enumerate(apps, 1):
+                            print(f"  {idx}. {nm}")
+                    else:
+                        print("未能获取可用应用列表（可能权限或环境限制）")
+                except Exception as e:
+                    print(f"列举可用应用失败: {str(e)}")
 
             # 不再主动连接测试服务器，等待测试服务器主动连接
             print("等待测试服务器主动连接...")
@@ -1097,34 +1113,47 @@ def interactive_setup():
     if not machine_id:
         machine_id = "test_machine_001"
     
-    # 获取监控应用列表
-    print("\n可用的应用类型:")
-    print("1. calculator (计算器)")
-    print("2. gedit (文本编辑器)")
-    print("3. firefox (浏览器)")
-    print("4. terminal (终端)")
-    print("5. nautilus (文件管理器)")
-    
-    apps_input = input("请输入要监控的应用名称，用空格分隔 (默认: calculator gedit): ").strip()
-    if not apps_input:
-        apps = ["calculator", "gedit"]
-    else:
-        apps = [app.strip() for app in apps_input.split()]
-    
-    # 获取组件配置文件路径
-    print("\n可用的配置文件:")
-    print("1. common_components.json (中文版)")
-    print("2. common_components_en.json (英文版)")
-    
-    config_choice = input("请选择配置文件 (1/2，默认: 1): ").strip()
-    if config_choice == "2":
-        config_file = "common_components_en.json"
-    else:
-        config_file = "common_components.json"
-    
-    # 获取预加载设置
+    # 选择是否启用预加载（先于配置文件选择）
     preload_input = input("是否启用常用组件预加载功能? (y/n，默认: y): ").strip().lower()
     enable_preload = preload_input in ['', 'y', 'yes', '是']
+
+    # 扫描 preload 目录供选择配置文件
+    config_file = ""
+    if enable_preload:
+        print("\n扫描 preload 目录下可用的配置文件:")
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        preload_dir = os.path.join(script_dir, "preload")
+        available_files = []
+        try:
+            if os.path.isdir(preload_dir):
+                for fname in os.listdir(preload_dir):
+                    if fname.lower().endswith('.json'):
+                        available_files.append(fname)
+        except Exception:
+            available_files = []
+
+        if not available_files:
+            print("未在 preload 目录发现可用 JSON 配置文件，将禁用预加载功能")
+            enable_preload = False
+        else:
+            for idx, fname in enumerate(available_files, 1):
+                print(f"{idx}. {fname}")
+            choice = input(f"请选择配置文件 (1-{len(available_files)}，默认: 1): ").strip()
+            try:
+                idx = int(choice) if choice else 1
+            except ValueError:
+                idx = 1
+            idx = max(1, min(idx, len(available_files)))
+            # 返回相对路径，以便后续与 script_dir 拼接
+            config_file = os.path.join("preload", available_files[idx - 1])
+
+    # 获取监控应用列表（默认空=监听所有应用）
+    print("\n未指定将监听所有应用，可输入应用名称（空格分隔）以限定:")
+    apps_input = input("请输入要监控的应用名称 (默认: 空=监听所有): ").strip()
+    if not apps_input:
+        apps = []
+    else:
+        apps = [app.strip() for app in apps_input.split()]
     
     return {
         'port': port,
@@ -1141,8 +1170,8 @@ def display_config(config):
     print("=" * 60)
     print(f"监听端口: {config['port']}")
     print(f"机器ID: {config['machine_id']}")
-    print(f"监控应用: {', '.join(config['apps'])}")
-    print(f"组件配置文件: {config['config_file']}")
+    print(f"监控应用: {', '.join(config['apps']) if config['apps'] else '未指定（监听所有应用）'}")
+    print(f"组件配置文件: {config['config_file'] if config['config_file'] else '（未启用预加载）'}")
     print(f"预加载功能: {'启用' if config['enable_preload'] else '禁用'}")
     print("=" * 60)
     
@@ -1367,10 +1396,9 @@ def main():
     
     try:
         # 加载配置文件
-        if config['enable_preload']:
+        if config['enable_preload'] and config['config_file']:
             script_dir = os.path.dirname(os.path.abspath(__file__))
             config_path = os.path.join(script_dir, config['config_file'])
-            
             print(f"\n正在加载常用组件配置文件: {config_path}")
             if communicator.load_common_components(config_path):
                 print("✅ 常用组件配置文件加载成功")
@@ -1379,7 +1407,7 @@ def main():
                 config['enable_preload'] = False
         
         # 启动服务
-        print(f"\n正在启动服务，监控应用: {', '.join(config['apps'])}")
+        print(f"\n正在启动服务，监控应用: {', '.join(config['apps']) if config['apps'] else '未指定（监听所有应用）'}")
         communicator.start(app_names=config['apps'])
         
         # 预加载组件
