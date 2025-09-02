@@ -13,26 +13,47 @@ export interface TestServerConnection {
 }
 
 export interface ConnectionStatus {
-  connected: boolean;
-  host?: string;
-  port?: number;
-  mode?: string; // 'embedded' 表示服务端内置测试服务器模式
+  is_running: boolean;
+  current_machine_id?: string;
+  current_app_name?: string;
+  connection_summary?: {
+    machines: {
+      total: number;
+      connected: number;
+      disconnected: number;
+    };
+    apps: {
+      total: number;
+      running: number;
+    };
+    events: {
+      total: number;
+      subscribers: number;
+    };
+  };
 }
 
 // 多机器多应用类型
 export interface MachineInfo {
-  id: string;
-  address: string;
+  machine_id: string;
   status: string;
+  address: string | [string, number];
+  info: any;
+  connected_at: number;
+  last_seen: number;
+  apps_count: number;
   apps: string[];
 }
 
 export interface AppInfo {
-  id: string;
-  name: string;
+  app_id: string;
   machine_id: string;
+  app_name: string;
   status: string;
-  region?: number[];
+  info: any;
+  registered_at: number;
+  machine_status: string;
+  machine_address: string | [string, number];
 }
 
 export interface MachineAppTarget {
@@ -131,4 +152,14 @@ export interface OperationResult {
   data?: any;
   error?: string;
   message?: string;
+}
+
+// 事件类型
+export interface EventInfo {
+  type: string;
+  machine_id: string;
+  app_name?: string;
+  timestamp: number;
+  data: any;
+  source_machine: string;
 } 

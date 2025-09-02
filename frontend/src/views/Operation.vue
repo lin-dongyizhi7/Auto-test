@@ -522,28 +522,28 @@ const currentScreenshot = computed(() => store.currentScreenshot)
 
 // 方法
 const handleConnect = async () => {
-  const success = await store.connect(connectionForm.value)
+  const success = await store.startTestServer(connectionForm.value.port)
   if (success) {
-    ElMessage.success('连接成功')
+    ElMessage.success('服务器启动成功')
   } else {
-    ElMessage.error('连接失败')
+    ElMessage.error('服务器启动失败')
   }
 }
 
 const handleDisconnect = async () => {
-  const success = await store.disconnect()
+  const success = await store.stopTestServer()
   if (success) {
-    ElMessage.success('已断开连接')
+    ElMessage.success('服务器已停止')
     selectedMachineId.value = ''
     selectedAppName.value = ''
   } else {
-    ElMessage.error('断开连接失败')
+    ElMessage.error('停止服务器失败')
   }
 }
 
 const refreshStatus = async () => {
   try {
-    await store.refreshConnectionStatus()
+    await store.refreshServerStatus()
     if (isConnected.value) {
       await store.refreshMachines()
       await store.refreshCurrentTarget()
@@ -601,13 +601,35 @@ const handleClickElement = async () => {
 }
 
 const handleRightClickElement = async () => {
-  // 实现右键点击逻辑
-  ElMessage.info('右键点击功能待实现')
+  if (!elementForm.value.path) {
+    ElMessage.warning('请输入元素路径')
+    return
+  }
+
+  const success = await store.performRightClickElement({
+    path: elementForm.value.path,
+    roles: elementForm.value.roles
+  })
+
+  if (success) {
+    ElMessage.success('右键点击元素成功')
+  }
 }
 
 const handleDoubleClickElement = async () => {
-  // 实现双击逻辑
-  ElMessage.info('双击功能待实现')
+  if (!elementForm.value.path) {
+    ElMessage.warning('请输入元素路径')
+    return
+  }
+
+  const success = await store.performDoubleClickElement({
+    path: elementForm.value.path,
+    roles: elementForm.value.roles
+  })
+
+  if (success) {
+    ElMessage.success('双击元素成功')
+  }
 }
 
 const handleClickImage = async () => {
@@ -655,7 +677,7 @@ const handleInputText = async () => {
     return
   }
 
-  const success = await store.performInputText({
+  const success = await store.performTypeText({
     text: textForm.value.text,
     elementPath: textForm.value.elementPath || undefined
   })
@@ -671,7 +693,7 @@ const handleHotkey = async () => {
     return
   }
 
-  const success = await store.performHotkey({
+  const success = await store.performSendHotkey({
     keys: hotkeyForm.value.keys
   })
 
@@ -687,9 +709,13 @@ const handleTakeScreenshot = async () => {
   }
 }
 
-const refreshLogs = () => {
-  // 刷新日志的逻辑
-  ElMessage.success('日志已刷新')
+const refreshLogs = async () => {
+  try {
+    await store.getEventHistory()
+    ElMessage.success('日志已刷新')
+  } catch (error) {
+    ElMessage.error('刷新日志失败')
+  }
 }
 
 const clearLogs = () => {

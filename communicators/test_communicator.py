@@ -7,7 +7,7 @@ from PIL import Image
 import io
 import threading
 import queue
-from typing import Dict, List, Optional, Set
+from typing import Dict, List, Optional, Set, Tuple, Any
 from dataclasses import dataclass
 from enum import Enum
 
@@ -21,6 +21,8 @@ class EventType(Enum):
     SCREENSHOT_TAKEN = "screenshot_taken"
     ELEMENT_FOUND = "element_found"
     ERROR_OCCURRED = "error_occurred"
+    OPERATION_STARTED = "operation_started"
+    OPERATION_COMPLETED = "operation_completed"
 
 @dataclass
 class Event:
@@ -56,6 +58,10 @@ class TestMachineCommunicator:
         # 线程管理
         self.server_thread = None
         self.event_thread = None
+        
+        # 连接状态监控
+        self.connection_status = {}
+        self.last_heartbeat = {}
         
     def start_server(self) -> None:
         """启动测试服务器，监听多机器连接"""
@@ -120,7 +126,8 @@ class TestMachineCommunicator:
                 "address": client_addr,
                 "info": machine_info,
                 "connected_at": time.time(),
-                "status": "connected"
+                "status": "connected",
+                "last_seen": time.time()
             }
             self.connections[machine_id] = client_socket
             
@@ -150,6 +157,10 @@ class TestMachineCommunicator:
                     request = json.loads(data)
                     response = self._handle_request(machine_id, request)
                     client_socket.sendall(json.dumps(response).encode('utf-8'))
+                    
+                    # 更新最后活跃时间
+                    if machine_id in self.machines:
+                        self.machines[machine_id]["last_seen"] = time.time()
                     
                 except json.JSONDecodeError:
                     error_msg = {"success": False, "error": "无效的JSON格式"}
@@ -199,7 +210,8 @@ class TestMachineCommunicator:
                 "address": (host, port),
                 "info": {"host": host, "port": port},
                 "connected_at": time.time(),
-                "status": "connected"
+                "status": "connected",
+                "last_seen": time.time()
             }
             self.connections[machine_id] = client_socket
 
@@ -256,6 +268,8 @@ class TestMachineCommunicator:
             return self._handle_get_apps_request()
         elif request_type == "sync_event":
             return self._handle_event_sync(machine_id, request)
+        elif request_type == "heartbeat":
+            return self._handle_heartbeat(machine_id, request)
         else:
             return {"success": False, "error": f"未知请求类型: {request_type}"}
     
@@ -339,6 +353,16 @@ class TestMachineCommunicator:
         if app_id not in self.apps:
             return {"success": False, "error": f"应用 {app_name} 未在机器 {machine_id} 上注册"}
         
+        # 发布操作开始事件
+        self._publish_event(Event(
+            type=EventType.OPERATION_STARTED,
+            machine_id=machine_id,
+            app_name=app_name,
+            timestamp=time.time(),
+            data={"commands": commands},
+            source_machine=machine_id
+        ))
+        
         # 转发请求到对应机器
         result = self._forward_request_to_machine(machine_id, "exec_commands", {
             "app_name": app_name,
@@ -349,6 +373,16 @@ class TestMachineCommunicator:
         if result.get("success"):
             self._publish_event(Event(
                 type=EventType.COMMAND_EXECUTED,
+                machine_id=machine_id,
+                app_name=app_name,
+                timestamp=time.time(),
+                data={"commands": commands, "result": result},
+                source_machine=machine_id
+            ))
+            
+            # 发布操作完成事件
+            self._publish_event(Event(
+                type=EventType.OPERATION_COMPLETED,
                 machine_id=machine_id,
                 app_name=app_name,
                 timestamp=time.time(),
@@ -379,6 +413,7 @@ class TestMachineCommunicator:
                 "info": machine["info"],
                 "connected_at": machine["connected_at"],
                 "status": machine["status"],
+                "last_seen": machine.get("last_seen", 0),
                 "apps": [aid for aid, app in self.apps.items() if app["machine_id"] == mid]
             }
         
@@ -417,6 +452,14 @@ class TestMachineCommunicator:
         self._publish_event(event)
         
         return {"success": True, "message": "事件同步成功"}
+    
+    def _handle_heartbeat(self, machine_id: str, request: Dict) -> Dict:
+        """处理心跳请求"""
+        if machine_id in self.machines:
+            self.machines[machine_id]["last_seen"] = time.time()
+            self.last_heartbeat[machine_id] = time.time()
+        
+        return {"success": True, "timestamp": time.time()}
     
     def _forward_request_to_machine(self, machine_id: str, request_type: str, data: Dict) -> Dict:
         """转发请求到指定机器"""
@@ -526,6 +569,108 @@ class TestMachineCommunicator:
                 source_machine=machine_id
             ))
     
+    # ==================== 新增的实用方法 ====================
+    
+    def get_machine_status(self, machine_id: str) -> Dict[str, Any]:
+        """获取指定机器的详细状态"""
+        if machine_id not in self.machines:
+            return {"success": False, "error": f"机器 {machine_id} 不存在"}
+        
+        machine = self.machines[machine_id]
+        machine_apps = [aid for aid, app in self.apps.items() if app["machine_id"] == machine_id]
+        
+        return {
+            "success": True,
+            "data": {
+                "machine_id": machine_id,
+                "status": machine["status"],
+                "address": machine["address"],
+                "info": machine["info"],
+                "connected_at": machine["connected_at"],
+                "last_seen": machine.get("last_seen", 0),
+                "apps_count": len(machine_apps),
+                "apps": machine_apps
+            }
+        }
+    
+    def get_app_status(self, app_id: str) -> Dict[str, Any]:
+        """获取指定应用的详细状态"""
+        if app_id not in self.apps:
+            return {"success": False, "error": f"应用 {app_id} 不存在"}
+        
+        app = self.apps[app_id]
+        machine = self.machines.get(app["machine_id"], {})
+        
+        return {
+            "success": True,
+            "data": {
+                "app_id": app_id,
+                "machine_id": app["machine_id"],
+                "app_name": app["app_name"],
+                "status": app["status"],
+                "info": app["info"],
+                "registered_at": app["registered_at"],
+                "machine_status": machine.get("status", "unknown"),
+                "machine_address": machine.get("address", "unknown")
+            }
+        }
+    
+    def ping_machine(self, machine_id: str) -> Dict[str, Any]:
+        """ping指定机器，检查连接状态"""
+        if machine_id not in self.connections:
+            return {"success": False, "error": f"机器 {machine_id} 未连接"}
+        
+        try:
+            result = self._forward_request_to_machine(machine_id, "heartbeat", {})
+            if result.get("success"):
+                return {"success": True, "latency": time.time() - result.get("timestamp", time.time())}
+            else:
+                return {"success": False, "error": "ping失败"}
+        except Exception as e:
+            return {"success": False, "error": f"ping异常: {str(e)}"}
+    
+    def get_connection_summary(self) -> Dict[str, Any]:
+        """获取连接状态摘要"""
+        total_machines = len(self.machines)
+        connected_machines = len([m for m in self.machines.values() if m["status"] == "connected"])
+        total_apps = len(self.apps)
+        running_apps = len([a for a in self.apps.values() if a["status"] == "running"])
+        
+        return {
+            "success": True,
+            "data": {
+                "machines": {
+                    "total": total_machines,
+                    "connected": connected_machines,
+                    "disconnected": total_machines - connected_machines
+                },
+                "apps": {
+                    "total": total_apps,
+                    "running": running_apps
+                },
+                "events": {
+                    "total": len(self.event_history),
+                    "subscribers": len(self.event_subscribers)
+                }
+            }
+        }
+    
+    def cleanup_inactive_connections(self, timeout_seconds: int = 300) -> int:
+        """清理超时的非活跃连接"""
+        current_time = time.time()
+        cleaned_count = 0
+        
+        for machine_id in list(self.machines.keys()):
+            machine = self.machines[machine_id]
+            if machine["status"] == "connected":
+                last_seen = machine.get("last_seen", 0)
+                if current_time - last_seen > timeout_seconds:
+                    print(f"清理超时连接: {machine_id}")
+                    self._disconnect_machine(machine_id)
+                    cleaned_count += 1
+        
+        return cleaned_count
+    
     def get_connected_machines(self) -> List[str]:
         """获取已连接的机器ID列表"""
         return list(self.machines.keys())
@@ -534,9 +679,12 @@ class TestMachineCommunicator:
         """获取已注册的应用ID列表"""
         return list(self.apps.keys())
     
-    def get_event_history(self, limit: int = 100) -> List[Event]:
-        """获取事件历史"""
-        return self.event_history[-limit:]
+    def get_event_history(self, limit: int = 100, event_type: Optional[EventType] = None) -> List[Event]:
+        """获取事件历史，支持按类型过滤"""
+        events = self.event_history
+        if event_type:
+            events = [e for e in events if e.type == event_type]
+        return events[-limit:]
     
     def stop_server(self) -> None:
         """停止测试服务器"""
