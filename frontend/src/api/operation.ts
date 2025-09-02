@@ -21,118 +21,129 @@ import type {
   ApiResponse
 } from './types'
 
-// 连接管理API
-export const connectToTestServer = (data: TestServerConnection): Promise<ApiResponse> => {
+// 服务器管理API
+export const startServer = (data: TestServerConnection): Promise<ApiResponse> => {
   // 后端仅需要端口，服务端模式忽略host
-  return request.post('/connect', { port: data.port })
+  return request.post('/api/server/start', { port: data.port })
 }
 
-export const disconnectFromTestServer = (): Promise<ApiResponse> => {
-  return request.post('/disconnect')
+export const stopServer = (): Promise<ApiResponse> => {
+  return request.post('/api/server/stop')
 }
 
-export const getConnectionStatus = (): Promise<ApiResponse<ConnectionStatus>> => {
-  return request.get('/status')
+export const getServerStatus = (): Promise<ApiResponse<ConnectionStatus>> => {
+  return request.get('/api/server/status')
 }
 
 // 多机器多应用管理API
 export const getMachines = (): Promise<ApiResponse<{ machines: MachineInfo[] }>> => {
-  return request.get('/machines')
-}
-
-export const connectMachine = (ip: string, port: number, machineId?: string): Promise<ApiResponse<{ machines: MachineInfo[] }>> => {
-  return request.post('/machines/connect', { ip, port, machine_id: machineId })
-}
-
-export const disconnectMachine = (machineId: string): Promise<ApiResponse> => {
-  return request.delete(`/machines/${machineId}`)
+  return request.get('/api/machines')
 }
 
 export const getApps = (machineId?: string): Promise<ApiResponse<{ apps: AppInfo[] }>> => {
   const params = machineId ? { machine_id: machineId } : {}
-  return request.get('/apps', { params })
+  return request.get('/api/apps', { params })
 }
 
 export const setTarget = (data: MachineAppTarget): Promise<ApiResponse> => {
-  return request.post('/set-target', data)
+  return request.post('/api/target/set', data)
 }
 
 export const getCurrentTarget = (): Promise<ApiResponse<CurrentTarget>> => {
-  return request.get('/current-target')
+  return request.get('/api/target/current')
 }
 
 export const getScreenshot = (data?: ScreenshotRequest): Promise<ApiResponse<ScreenshotData>> => {
   const params = data?.region ? { region: data.region } : {}
-  return request.post('/screenshot', null, { params })
+  return request.get('/api/screenshot', { params })
 }
 
 // 元素操作API
 export const clickElement = (data: ElementOperation): Promise<ApiResponse> => {
-  return request.post('/click-element', data)
+  return request.post('/api/element/click', data)
+}
+
+export const rightClickElement = (data: ElementOperation): Promise<ApiResponse> => {
+  return request.post('/api/element/right-click', data)
+}
+
+export const doubleClickElement = (data: ElementOperation): Promise<ApiResponse> => {
+  return request.post('/api/element/double-click', data)
+}
+
+export const setElementText = (data: TextInput): Promise<ApiResponse> => {
+  return request.post('/api/element/set-text', data)
+}
+
+export const moveToElement = (data: ElementOperation): Promise<ApiResponse> => {
+  return request.post('/api/element/move-to', data)
+}
+
+// 图像操作API
+export const findImage = (data: ImageOperation): Promise<ApiResponse> => {
+  return request.post('/api/image/find', data)
 }
 
 export const clickImage = (data: ImageOperation): Promise<ApiResponse> => {
-  return request.post('/click-image', data)
+  return request.post('/api/image/click', data)
 }
 
-export const dragTo = (data: DragOperation): Promise<ApiResponse> => {
-  return request.post('/drag-to', data)
+// 键盘操作API
+export const sendHotkey = (data: HotkeyOperation): Promise<ApiResponse> => {
+  return request.post('/api/keyboard/hotkey', data)
 }
 
-export const inputText = (data: TextInput): Promise<ApiResponse> => {
-  return request.post('/input-text', data)
+export const typeText = (data: TextInput): Promise<ApiResponse> => {
+  return request.post('/api/keyboard/type', data)
 }
 
-export const hotkey = (data: HotkeyOperation): Promise<ApiResponse> => {
-  return request.post('/hotkey', data)
+// 等待操作API
+export const waitForElement = (data: ElementOperation): Promise<ApiResponse> => {
+  return request.post('/api/wait/element', data)
 }
 
-export const getElementInfo = (path: string, roles?: string): Promise<ApiResponse> => {
-  const params = { path, ...(roles && { roles }) }
-  return request.get('/element-info', { params })
-}
-
-export const findImage = (data: ImageOperation): Promise<ApiResponse> => {
-  return request.post('/find-image', data)
+export const waitForImage = (data: ImageOperation): Promise<ApiResponse> => {
+  return request.post('/api/wait/image', data)
 }
 
 // 脚本管理API
-export const getScripts = (): Promise<ApiResponse<ScriptInfo[]>> => {
-  return request.get('/scripts')
+export const getScripts = (): Promise<ApiResponse<{ scripts: ScriptInfo[] }>> => {
+  return request.get('/api/scripts')
 }
 
 export const getScript = (id: string): Promise<ApiResponse<ScriptInfo>> => {
-  return request.get(`/scripts/${id}`)
+  return request.get(`/api/scripts/${id}`)
 }
 
 export const createScript = (data: CreateScriptRequest): Promise<ApiResponse<ScriptInfo>> => {
-  return request.post('/scripts', data)
+  return request.post('/api/scripts', data)
 }
 
 export const updateScript = (id: string, data: UpdateScriptRequest): Promise<ApiResponse<ScriptInfo>> => {
-  return request.put(`/scripts/${id}`, data)
+  return request.put(`/api/scripts/${id}`, data)
 }
 
 export const deleteScript = (id: string): Promise<ApiResponse> => {
-  return request.delete(`/scripts/${id}`)
+  return request.delete(`/api/scripts/${id}`)
 }
 
 export const runScript = (id: string): Promise<ApiResponse<ScriptRunResult>> => {
-  return request.post(`/scripts/${id}/run`)
+  return request.post(`/api/scripts/${id}/run`)
 }
 
-export const importScript = (file: File): Promise<ApiResponse<ScriptInfo>> => {
-  const formData = new FormData()
-  formData.append('file', file)
-  return request.post('/scripts/import', formData, {
-    headers: {
-      'Content-Type': 'multipart/form-data'
-    }
-  })
+// 事件管理API
+export const getEvents = (limit?: number, eventType?: string): Promise<ApiResponse<{ events: any[] }>> => {
+  const params: any = {}
+  if (limit) params.limit = limit
+  if (eventType) params.event_type = eventType
+  return request.get('/api/events', { params })
 }
 
-export const exportScript = (id: string): Promise<Blob> => {
-  return request.get(`/scripts/${id}/export`, {
-    responseType: 'blob'
-  })
+// 机器连接管理API
+export const connectToMachine = (host: string, port: number): Promise<ApiResponse> => {
+  return request.post('/api/machine/connect', { host, port })
+}
+
+export const disconnectMachine = (machineId: string): Promise<ApiResponse> => {
+  return request.post('/api/machine/disconnect', { machine_id: machineId })
 } 

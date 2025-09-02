@@ -470,8 +470,8 @@ const loadScripts = async () => {
   loading.value = true
   try {
     const response = await getScriptsApi()
-    // response.data 为 ApiResponse，真正的数据在 response.data.data
-    scripts.value = (response.data && (response.data as any).data) || []
+    // 新的API直接返回数据，不需要嵌套访问
+    scripts.value = response.data || []
   } catch (error) {
     ElMessage.error('加载脚本列表失败')
     console.error('Load scripts error:', error)
@@ -626,8 +626,8 @@ const batchDelete = async () => {
 const onRunScript = async (script: ScriptInfo) => {
   try {
     const response = await runScriptApi(script.id)
-    // response.data 为 ApiResponse，运行结果在 data
-    runResult.value = (response.data && (response.data as any).data) || null
+    // 新的API直接返回数据
+    runResult.value = response.data || null
     showResultDialog.value = true
     loadScripts()
   } catch (error) {

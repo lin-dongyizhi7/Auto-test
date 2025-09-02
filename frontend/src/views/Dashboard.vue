@@ -72,22 +72,19 @@
       </div>
 
       <el-row v-else :gutter="16">
-        <el-col v-for="m in machines" :key="m.id" :span="8">
+        <el-col v-for="m in machines" :key="m.machine_id" :span="8">
           <el-card class="machine-card" shadow="hover">
-            <div class="machine-row" @click="$router.push(`/machine/${m.id}`)">
+            <div class="machine-row" @click="$router.push(`/machine/${m.machine_id}`)">
               <el-tag :type="m.status === 'connected' ? 'success' : 'danger'" size="small">{{ m.status }}</el-tag>
-              <span class="machine-name">{{ m.address }}</span>
+              <span class="machine-name">{{ Array.isArray(m.address) ? `${m.address[0]}:${m.address[1]}` : m.address }}</span>
             </div>
             <div class="machine-meta">
-              <span>应用数：{{ m.apps?.length || 0 }}</span>
-              <span>ID：{{ m.id }}</span>
+              <span>应用数：{{ m.apps_count || 0 }}</span>
+              <span>ID：{{ m.machine_id }}</span>
             </div>
-            <div class="machine-actions">
-              <el-popconfirm title="确定断开该机器连接？" @confirm="handleDisconnectMachine(m.id)">
-                <template #reference>
-                  <el-button type="danger" size="small">断开连接</el-button>
-                </template>
-              </el-popconfirm>
+            <div class="machine-info">
+              <span>连接时间：{{ new Date(m.connected_at * 1000).toLocaleString() }}</span>
+              <span>最后活跃：{{ new Date(m.last_seen * 1000).toLocaleString() }}</span>
             </div>
           </el-card>
         </el-col>
@@ -102,10 +99,6 @@
             <span>快速操作</span>
           </template>
           <div class="quick-actions">
-            <el-button type="primary" size="large" @click="handleQuickConnect" :disabled="isConnected">
-              <el-icon><Connection /></el-icon>
-              快速连接
-            </el-button>
             <el-button type="success" size="large" @click="handleTakeScreenshot" :disabled="!isTargetSet">
               <el-icon><Camera /></el-icon>
               截图
@@ -113,6 +106,10 @@
             <el-button type="warning" size="large" @click="handleRefreshStatus">
               <el-icon><Refresh /></el-icon>
               刷新状态
+            </el-button>
+            <el-button type="danger" size="large" @click="handleStopServer" :disabled="!isConnected">
+              <el-icon><Close /></el-icon>
+              停止服务器
             </el-button>
           </div>
         </el-card>
@@ -159,18 +156,18 @@
     </el-card>
 
     <!-- 新建连接对话框 -->
-    <el-dialog v-model="createDialogVisible" title="新建连接" width="420px">
-      <el-form label-width="80px">
-        <el-form-item label="IP">
-          <el-input v-model="createIp" placeholder="例如 192.168.1.100" />
+    <el-dialog v-model="connectionDialogVisible" title="新建连接" width="420px">
+      <el-form label-width="100px">
+        <el-form-item label="目标机器IP" required>
+          <el-input v-model="targetMachineIP" placeholder="192.168.1.100" />
         </el-form-item>
-        <el-form-item label="端口">
-          <el-input v-model.number="createPort" type="number" placeholder="8888" />
+        <el-form-item label="目标机器端口">
+          <el-input v-model.number="targetMachinePort" type="number" placeholder="8888" />
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="createDialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="creating" @click="createConnection">连接</el-button>
+        <el-button @click="connectionDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="connecting" @click="createConnection">连接</el-button>
       </template>
     </el-dialog>
   </div>
@@ -180,7 +177,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useOperationStore } from '@/stores/operation'
-import { connectMachine, disconnectMachine } from '@/api/operation'
+// 移除不再需要的导入，因为机器连接管理已移至后端
 
 const operationStore = useOperationStore()
 
@@ -189,10 +186,10 @@ const uptime = ref('00:00:00')
 const startTime = ref(Date.now())
 
 // 新建连接对话框
-const createDialogVisible = ref(false)
-const createIp = ref('')
-const createPort = ref(8888)
-const creating = ref(false)
+const connectionDialogVisible = ref(false)
+const targetMachineIP = ref('')
+const targetMachinePort = ref(8888)
+const connecting = ref(false)
 
 // 计算属性
 const isConnected = computed(() => operationStore.isConnected)
@@ -202,9 +199,8 @@ const apps = computed(() => operationStore.apps)
 const operationLogs = computed(() => operationStore.operationLogs)
 
 const testServerInfo = computed(() => {
-  if (!isConnected.value) return '未连接'
-  const config = operationStore.connectionConfig
-  return `${config.host}:${config.port}`
+  if (!isConnected.value) return '未启动'
+  return 'localhost:8888 (默认启动)'
 })
 
 const currentTargetInfo = computed(() => {
@@ -226,51 +222,51 @@ const lastOperationTime = computed(() => {
 })
 
 // 方法
-const openCreateConnection = () => { createDialogVisible.value = true }
-
-const createConnection = async () => {
-  if (!createIp.value || !createPort.value) {
-    ElMessage.warning('请填写 IP 和端口')
+const openCreateConnection = () => { 
+  if (!isConnected.value) {
+    ElMessage.warning('测试服务器未启动，请稍后再试')
     return
   }
-  creating.value = true
-  try {
-    const res = await connectMachine(createIp.value.trim(), createPort.value)
-    if (res.success) {
-      ElMessage.success('连接已创建')
-      createDialogVisible.value = false
-      await operationStore.refreshMachines()
-    } else {
-      ElMessage.error(res.message || '连接失败')
-    }
-  } catch (e) {
-    ElMessage.error('连接失败')
-  } finally {
-    creating.value = false
-  }
+  connectionDialogVisible.value = true 
 }
 
-const handleDisconnectMachine = async (machineId: string) => {
-  try {
-    const res = await disconnectMachine(machineId)
-    if (res.success) {
-      ElMessage.success('已断开')
-      await operationStore.refreshMachines()
-    } else {
-      ElMessage.error(res.message || '断开失败')
-    }
-  } catch (e) {
-    ElMessage.error('断开失败')
+const createConnection = async () => {
+  if (!targetMachineIP.value) {
+    ElMessage.warning('请输入目标机器IP')
+    return
   }
-}
-
-const handleQuickConnect = async () => {
+  
+  connecting.value = true
   try {
-    const success = await operationStore.startServer(8888)
-    if (success) ElMessage.success('测试服务器已启动')
-    else ElMessage.error('启动测试服务器失败')
+    const success = await operationStore.connectToTargetMachine(
+      targetMachineIP.value,
+      targetMachinePort.value
+    )
+    if (success) {
+      ElMessage.success(`成功连接到目标机器 ${targetMachineIP.value}:${targetMachinePort.value}`)
+      connectionDialogVisible.value = false
+      // 清空输入
+      targetMachineIP.value = ''
+      targetMachinePort.value = 8888
+    } else {
+      ElMessage.error('连接目标机器失败')
+    }
   } catch (error) {
-    ElMessage.error(`启动失败: ${error instanceof Error ? error.message : '未知错误'}`)
+    ElMessage.error(`连接失败: ${error instanceof Error ? error.message : '未知错误'}`)
+  } finally {
+    connecting.value = false
+  }
+}
+
+
+
+const handleStopServer = async () => {
+  try {
+    const success = await operationStore.stopTestServer()
+    if (success) ElMessage.success('测试服务器已停止')
+    else ElMessage.error('停止测试服务器失败')
+  } catch (error) {
+    ElMessage.error(`停止失败: ${error instanceof Error ? error.message : '未知错误'}`)
   }
 }
 
@@ -286,7 +282,7 @@ const handleTakeScreenshot = async () => {
 
 const handleRefreshStatus = async () => {
   try {
-    await operationStore.refreshConnectionStatus()
+    await operationStore.refreshServerStatus()
     if (isConnected.value) {
       await operationStore.refreshMachines()
       await operationStore.refreshCurrentTarget()
@@ -303,7 +299,8 @@ const updateUptime = () => {
   const hours = Math.floor(diff / (1000 * 60 * 60))
   const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
   const seconds = Math.floor((diff % (1000 * 60)) / 1000)
-  uptime.value = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
+  const pad = (num: number) => String(num).padStart(2, '0')
+  uptime.value = `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`
 }
 
 // 生命周期
@@ -322,7 +319,7 @@ onMounted(async () => {
   .machine-row { display: flex; align-items: center; gap: 10px; }
   .machine-name { font-weight: 600; }
   .machine-meta { margin-top: 8px; color: #909399; display: flex; justify-content: space-between; }
-  .machine-actions { margin-top: 10px; text-align: right; }
+  .machine-info { margin-top: 8px; color: #909399; font-size: 12px; display: flex; flex-direction: column; gap: 4px; }
 }
 
 .card-header {

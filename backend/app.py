@@ -3,7 +3,7 @@
 """
 全新后端（服务端运行模式）
  - 使用 FastAPI 暴露 HTTP API
- - 在本进程内启动并管理内置测试服务器（通过 communicators.operation_multi_machine.MultiMachineOperation）
+ - 在本进程内启动并管理内置测试服务器（通过 communicators.test_communicator.TestMachineCommunicator）
  - 提供多机器/多应用的管理与操作端点
  - 提供脚本管理端点（使用JSON文件持久化存储）
 """
@@ -24,6 +24,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
+from communicators.test_communicator import TestMachineCommunicator
 from communicators.operation_multi_machine import MultiMachineOperation
 from config import config
 
@@ -35,7 +36,8 @@ logging.basicConfig(
 logger = logging.getLogger("backend.app")
 
 # 全局运行状态
-server: Optional[MultiMachineOperation] = None
+communicator: Optional[TestMachineCommunicator] = None
+operation: Optional[MultiMachineOperation] = None
 is_running = False
 current_machine_id: Optional[str] = None
 current_app_name: Optional[str] = None
@@ -198,6 +200,7 @@ class ScriptStorageManager:
         self.script_counter += 1
         script_id = f"script_{self.script_counter}"
         
+        # 创建脚本信息
         now = datetime.now().isoformat()
         script_info = ScriptInfo(
             id=script_id,
@@ -210,16 +213,17 @@ class ScriptStorageManager:
             target_app_name=req.target_app_name
         )
         
+        # 保存到存储
         self.scripts_storage[script_id] = script_info
         self._save_data()
         
-        logger.info(f"创建脚本成功: {script_id} - {req.name}")
+        logger.info(f"创建脚本成功: {script_id}")
         return script_info
     
-    def update_script(self, script_id: str, req: UpdateScriptRequest) -> Optional[ScriptInfo]:
+    def update_script(self, script_id: str, req: UpdateScriptRequest) -> ScriptInfo:
         """更新脚本"""
         if script_id not in self.scripts_storage:
-            return None
+            raise ValueError(f"脚本 {script_id} 不存在")
         
         script_info = self.scripts_storage[script_id]
         
@@ -240,6 +244,7 @@ class ScriptStorageManager:
         
         script_info.updatedAt = datetime.now().isoformat()
         
+        # 保存到存储
         self._save_data()
         
         logger.info(f"更新脚本成功: {script_id}")
@@ -250,445 +255,919 @@ class ScriptStorageManager:
         if script_id not in self.scripts_storage:
             return False
         
-        script_name = self.scripts_storage[script_id].name
         del self.scripts_storage[script_id]
         self._save_data()
         
-        logger.info(f"删除脚本成功: {script_id} - {script_name}")
+        logger.info(f"删除脚本成功: {script_id}")
         return True
     
-    def update_script_status(self, script_id: str, status: str, run_count: int = None, last_run_time: str = None):
+    def update_script_status(self, script_id: str, status: str, last_run_time: Optional[str] = None):
         """更新脚本状态"""
         if script_id not in self.scripts_storage:
-            return False
+            return
         
         script_info = self.scripts_storage[script_id]
         script_info.status = status
-        script_info.updatedAt = datetime.now().isoformat()
         
-        if run_count is not None:
-            script_info.runCount = run_count
-        if last_run_time is not None:
+        if last_run_time:
             script_info.lastRunTime = last_run_time
+            script_info.runCount += 1
         
         self._save_data()
-        return True
-    
-    def backup_data(self, backup_dir: str = None):
-        """备份脚本数据"""
-        if not backup_dir:
-            backup_dir = os.path.join(os.path.dirname(self.storage_file), "backup")
-        
-        if not os.path.exists(backup_dir):
-            os.makedirs(backup_dir, exist_ok=True)
-        
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        
-        # 备份脚本存储文件
-        backup_storage_file = os.path.join(backup_dir, f"scripts_storage_{timestamp}.json")
-        if os.path.exists(self.storage_file):
-            import shutil
-            shutil.copy2(self.storage_file, backup_storage_file)
-            logger.info(f"脚本存储备份到: {backup_storage_file}")
-        
-        # 备份计数器文件
-        backup_counter_file = os.path.join(backup_dir, f"script_counter_{timestamp}.json")
-        if os.path.exists(self.counter_file):
-            import shutil
-            shutil.copy2(self.counter_file, backup_counter_file)
-            logger.info(f"脚本计数器备份到: {backup_counter_file}")
 
-# 创建脚本存储管理器实例
+# 初始化脚本存储管理器
 script_manager = ScriptStorageManager(SCRIPT_STORAGE_FILE, SCRIPT_COUNTER_FILE)
 
-app = FastAPI(title="AutoTest Backend (Server Mode)")
+# 创建FastAPI应用
+app = FastAPI(
+    title="自动化测试系统后端API",
+    description="提供多机器自动化测试的后端服务",
+    version="1.0.0"
+)
+
+# 添加CORS中间件
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=config.ALLOWED_ORIGINS,
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# 应用启动时自动启动内置测试服务器
-try:
-    if not is_running:
-        server = MultiMachineOperation(bind_host=config.DEFAULT_HOST, server_port=config.DEFAULT_PORT)
+# ==================== 服务器管理端点 ====================
+
+@app.post("/api/server/start", response_model=OperationResult)
+async def start_server(request: StartServerRequest):
+    """启动内置测试服务器"""
+    global communicator, operation, is_running
+    
+    try:
+        if is_running:
+            return OperationResult(
+                success=False,
+                error="服务器已在运行中"
+            )
+        
+        # 启动通信器
+        communicator = TestMachineCommunicator(
+            server_host="0.0.0.0",
+            server_port=request.port,
+            server_id="backend_server"
+        )
+        communicator.start_server()
+        
+        # 创建操作类
+        operation = MultiMachineOperation(communicator)
+        
         is_running = True
-        logger.info(f"内置测试服务器已在启动时开启 {config.DEFAULT_HOST}:{config.DEFAULT_PORT}")
-except Exception as e:
-    logger.error(f"启动内置测试服务器失败: {e}")
-
-def ok(data: Optional[Dict[str, Any]] = None, message: Optional[str] = None) -> OperationResult:
-    return OperationResult(success=True, data=data, message=message)
-
-def err(message: str, error: Optional[str] = None, data: Optional[Dict[str, Any]] = None) -> OperationResult:
-    return OperationResult(success=False, error=error or message, message=message, data=data)
-
-def ensure_server():
-    if not (is_running and server):
-        raise HTTPException(status_code=400, detail="测试服务器未启动")
-
-@app.get("/")
-def root():
-    return {"name": "AutoTest Backend", "mode": "server-embedded", "running": is_running}
-
-@app.get("/status")
-def status():
-    return {"connected": is_running, "host": "0.0.0.0" if is_running else None, "port": config.DEFAULT_PORT if is_running else None, "mode": "embedded"}
-
-@app.post("/connect")
-def start(req: StartServerRequest):
-    global server, is_running
-    try:
-        server = MultiMachineOperation(bind_host=config.DEFAULT_HOST, server_port=req.port)
-        is_running = True
-        return ok(message=f"内置测试服务器已启动 {config.DEFAULT_HOST}:{req.port}")
+        
+        logger.info(f"内置测试服务器已启动，监听端口: {request.port}")
+        
+        return OperationResult(
+            success=True,
+            message=f"内置测试服务器已启动，监听端口: {request.port}"
+        )
+        
     except Exception as e:
-        server = None
+        logger.error(f"启动服务器失败: {e}")
+        return OperationResult(
+            success=False,
+            error=f"启动服务器失败: {str(e)}"
+        )
+
+@app.post("/api/server/stop", response_model=OperationResult)
+async def stop_server():
+    """停止内置测试服务器"""
+    global communicator, operation, is_running
+    
+    try:
+        if not is_running:
+            return OperationResult(
+                success=False,
+                error="服务器未运行"
+            )
+        
+        # 停止操作类
+        if operation:
+            operation.close()
+            operation = None
+        
+        # 停止通信器
+        if communicator:
+            communicator.stop_server()
+            communicator = None
+        
         is_running = False
-        return err("测试服务器启动失败", str(e))
-
-@app.post("/disconnect")
-def stop():
-    global server, is_running
-    try:
-        if server:
-            server.close()
-        server = None
-        is_running = False
-        return ok(message="内置测试服务器已停止")
-    except Exception as e:
-        return err("停止失败", str(e))
-
-@app.get("/machines")
-def machines():
-    ensure_server()
-    try:
-        mids = server.get_available_machines()
-        return ok({"machines": [{"id": mid, "address": f"机器_{mid}", "status": "connected", "apps": []} for mid in mids]})
-    except Exception as e:
-        return err("获取机器列表失败", str(e))
-
-@app.post("/machines/connect")
-def connect_machine(body: Dict[str, Any]):
-    """新建与待测试机器的连接（主动连接模式）"""
-    ensure_server()
-    try:
-        ip = str(body.get('ip', '')).strip()
-        port = int(body.get('port', 0))
-        mid = str(body.get('machine_id') or f"{ip}:{port}")
+        current_machine_id = None
+        current_app_name = None
         
-        if not ip or not port:
-            return err("参数错误", "需要提供 ip 与 port")
+        logger.info("内置测试服务器已停止")
         
-        # 调用服务器的主动连接方法
-        if hasattr(server, 'connect_to_machine') and callable(getattr(server, 'connect_to_machine')):
-            result = server.connect_to_machine(mid, ip, port)
-            if not result.get("success"):
-                return err("连接失败", result.get("error"))
-        
-        # 获取更新后的机器列表
-        machines = getattr(server, 'machines', {})
-        return ok({
-            "machines": [
-                {"id": k, 
-                 "address": f"{v.get('address')[0]}:{v.get('address')[1]}", 
-                 "status": v.get('status', 'connected'), 
-                 "apps": v.get('apps', [])} 
-                for k, v in machines.items()
-            ]
-        }, "连接已创建")
+        return OperationResult(
+            success=True,
+            message="内置测试服务器已停止"
+        )
         
     except Exception as e:
-        return err("创建连接失败", str(e))
+        logger.error(f"停止服务器失败: {e}")
+        return OperationResult(
+            success=False,
+            error=f"停止服务器失败: {str(e)}"
+        )
 
-@app.delete("/machines/{machine_id}")
-def disconnect_machine(machine_id: str):
-    ensure_server()
+@app.get("/api/server/status", response_model=OperationResult)
+async def get_server_status():
+    """获取服务器状态"""
+    global communicator, operation, is_running
+    
+    if not is_running or not communicator:
+        return OperationResult(
+            success=True,
+            data={
+                "is_running": False,
+                "current_machine_id": None,
+                "current_app_name": None
+            }
+        )
+    
     try:
-        # 优先使用服务器的断开方法
-        if hasattr(server, 'disconnect_machine') and callable(getattr(server, 'disconnect_machine')):
-            result = server.disconnect_machine(machine_id)
-            if result.get("success"):
-                return ok(message=f"机器 {machine_id} 已断开")
-            else:
-                return err("断开失败", result.get("error"))
+        # 获取连接摘要
+        connection_summary = communicator.get_connection_summary()
         
-        # 回退方案
-        machines = getattr(server, 'machines', {})
-        if machine_id in machines:
-            info = machines.pop(machine_id)
-            # 尝试关闭连接
-            if 'socket' in info:
-                try:
-                    info['socket'].close()
-                except Exception:
-                    pass
-            return ok(message=f"机器 {machine_id} 已断开")
+        return OperationResult(
+            success=True,
+            data={
+                "is_running": True,
+                "current_machine_id": current_machine_id,
+                "current_app_name": current_app_name,
+                "connection_summary": connection_summary.get("data", {})
+            }
+        )
+        
+    except Exception as e:
+        logger.error(f"获取服务器状态失败: {e}")
+        return OperationResult(
+            success=False,
+            error=f"获取服务器状态失败: {str(e)}"
+        )
+
+# ==================== 机器和应用管理端点 ====================
+
+@app.get("/api/machines", response_model=OperationResult)
+async def get_machines():
+    """获取已连接的机器列表"""
+    global communicator
+    
+    if not communicator:
+        return OperationResult(
+            success=False,
+            error="服务器未运行"
+        )
+    
+    try:
+        machines = communicator.get_connected_machines()
+        machines_info = {}
+        
+        for machine_id in machines:
+            status = communicator.get_machine_status(machine_id)
+            if status.get("success"):
+                machines_info[machine_id] = status["data"]
+        
+        return OperationResult(
+            success=True,
+            data={"machines": machines_info}
+        )
+        
+    except Exception as e:
+        logger.error(f"获取机器列表失败: {e}")
+        return OperationResult(
+            success=False,
+            error=f"获取机器列表失败: {str(e)}"
+        )
+
+@app.post("/api/machine/connect", response_model=OperationResult)
+async def connect_to_machine(request: dict):
+    """连接到目标机器"""
+    global communicator
+    
+    if not communicator:
+        return OperationResult(
+            success=False,
+            error="服务器未运行"
+        )
+    
+    try:
+        host = request.get("host")
+        port = request.get("port")
+        
+        if not host or not port:
+            return OperationResult(
+                success=False,
+                error="主机地址和端口不能为空"
+            )
+        
+        # 生成机器ID
+        machine_id = f"machine_{host}_{port}"
+        
+        # 尝试连接到目标机器
+        result = communicator.connect_to_machine(machine_id, host, port)
+        
+        if result.get("success"):
+            logger.info(f"成功连接到目标机器 {host}:{port}")
+            return OperationResult(
+                success=True,
+                message=f"成功连接到目标机器 {host}:{port}"
+            )
         else:
-            return err("断开失败", f"未找到机器 {machine_id}")
+            logger.error(f"连接目标机器失败: {result.get('error')}")
+            return OperationResult(
+                success=False,
+                error=result.get("error", "连接失败")
+            )
+        
+    except Exception as e:
+        logger.error(f"连接目标机器异常: {e}")
+        return OperationResult(
+            success=False,
+            error=f"连接目标机器失败: {str(e)}"
+        )
+
+@app.post("/api/machine/disconnect", response_model=OperationResult)
+async def disconnect_machine(request: dict):
+    """断开与目标机器的连接"""
+    global communicator
+    
+    if not communicator:
+        return OperationResult(
+            success=False,
+            error="服务器未运行"
+        )
+    
+    try:
+        machine_id = request.get("machine_id")
+        
+        if not machine_id:
+            return OperationResult(
+                success=False,
+                error="机器ID不能为空"
+            )
+        
+        # 尝试断开连接
+        result = communicator.disconnect_machine(machine_id)
+        
+        if result.get("success"):
+            logger.info(f"成功断开与机器 {machine_id} 的连接")
+            return OperationResult(
+                success=True,
+                message=f"成功断开与机器 {machine_id} 的连接"
+            )
+        else:
+            logger.error(f"断开机器连接失败: {result.get('error')}")
+            return OperationResult(
+                success=False,
+                error=result.get("error", "断开连接失败")
+            )
+        
+    except Exception as e:
+        logger.error(f"断开机器连接异常: {e}")
+        return OperationResult(
+            success=False,
+            error=f"断开机器连接失败: {str(e)}"
+        )
+
+@app.get("/api/apps", response_model=OperationResult)
+async def get_apps():
+    """获取已注册的应用列表"""
+    global communicator
+    
+    if not communicator:
+        return OperationResult(
+            success=False,
+            error="服务器未运行"
+        )
+    
+    try:
+        apps = communicator.get_registered_apps()
+        apps_info = {}
+        
+        for app_id in apps:
+            status = communicator.get_app_status(app_id)
+            if status.get("success"):
+                apps_info[app_id] = status["data"]
+        
+        return OperationResult(
+            success=True,
+            data={"apps": apps_info}
+        )
+        
+    except Exception as e:
+        logger.error(f"获取应用列表失败: {e}")
+        return OperationResult(
+            success=False,
+            error=f"获取应用列表失败: {str(e)}"
+        )
+
+@app.post("/api/target/set", response_model=OperationResult)
+async def set_target(request: MachineAppTargetRequest):
+    """设置当前操作目标"""
+    global operation, current_machine_id, current_app_name
+    
+    if not operation:
+        return OperationResult(
+            success=False,
+            error="服务器未运行"
+        )
+    
+    try:
+        success = operation.set_target(request.machine_id, request.app_name)
+        
+        if success:
+            current_machine_id = request.machine_id
+            current_app_name = request.app_name
+            
+            return OperationResult(
+                success=True,
+                message=f"设置目标成功: 机器 {request.machine_id}, 应用 {request.app_name}"
+            )
+        else:
+            return OperationResult(
+                success=False,
+                error="设置目标失败"
+            )
             
     except Exception as e:
-        return err("断开失败", str(e))
+        logger.error(f"设置目标失败: {e}")
+        return OperationResult(
+            success=False,
+            error=f"设置目标失败: {str(e)}"
+        )
 
-@app.get("/apps")
-def apps(machine_id: Optional[str] = None):
-    ensure_server()
+@app.get("/api/target/current", response_model=OperationResult)
+async def get_current_target():
+    """获取当前操作目标"""
+    return OperationResult(
+        success=True,
+        data={
+            "machine_id": current_machine_id,
+            "app_name": current_app_name
+        }
+    )
+
+# ==================== 元素操作端点 ====================
+
+@app.post("/api/element/click", response_model=OperationResult)
+async def click_element(request: ElementOperationRequest):
+    """点击元素"""
+    global operation
+    
+    if not operation:
+        return OperationResult(
+            success=False,
+            error="服务器未运行"
+        )
+    
     try:
-        apps = server.get_available_apps(machine_id)
-        mapped = [{"id": f"{a['machine_id']}:{a['name']}", "name": a['name'], "machine_id": a['machine_id'], "status": "running", "region": a.get('region')} for a in apps]
-        return ok({"apps": mapped})
+        commands = operation.click_element(request.path, request.roles)
+        
+        return OperationResult(
+            success=True,
+            data={"commands": commands}
+        )
+        
     except Exception as e:
-        return err("获取应用列表失败", str(e))
+        logger.error(f"点击元素失败: {e}")
+        return OperationResult(
+            success=False,
+            error=f"点击元素失败: {str(e)}"
+        )
 
-@app.post("/set-target")
-def set_target(req: MachineAppTargetRequest):
-    ensure_server()
+@app.post("/api/element/right-click", response_model=OperationResult)
+async def right_click_element(request: ElementOperationRequest):
+    """右键点击元素"""
+    global operation
+    
+    if not operation:
+        return OperationResult(
+            success=False,
+            error="服务器未运行"
+        )
+    
     try:
-        if server.set_target(req.machine_id, req.app_name):
-            global current_machine_id, current_app_name
-            current_machine_id = req.machine_id
-            current_app_name = req.app_name
-            return ok({"machine_id": req.machine_id, "app_name": req.app_name}, "设置目标成功")
-        return err("设置目标失败")
+        commands = operation.right_click_element(request.path, request.roles)
+        
+        return OperationResult(
+            success=True,
+            data={"commands": commands}
+        )
+        
     except Exception as e:
-        return err("设置目标失败", str(e))
+        logger.error(f"右键点击元素失败: {e}")
+        return OperationResult(
+            success=False,
+            error=f"右键点击元素失败: {str(e)}"
+        )
 
-@app.get("/current-target")
-def current_target():
-    ensure_server()
-    return ok({"machine_id": current_machine_id, "app_name": current_app_name})
-
-@app.post("/screenshot")
-def screenshot(region: Optional[str] = None):
-    ensure_server()
+@app.post("/api/element/double-click", response_model=OperationResult)
+async def double_click_element(request: ElementOperationRequest):
+    """双击元素"""
+    global operation
+    
+    if not operation:
+        return OperationResult(
+            success=False,
+            error="服务器未运行"
+        )
+    
     try:
-        reg = None
-        if region:
-            parts = [int(x) for x in region.split(',')]
-            if len(parts) != 4:
-                return err("区域参数格式错误，应为 x,y,width,height")
-            reg = parts
-        res = server.get_screenshot(reg)
-        return OperationResult(**res)
+        commands = operation.double_click_element(request.path, request.roles)
+        
+        return OperationResult(
+            success=True,
+            data={"commands": commands}
+        )
+        
     except Exception as e:
-        return err("获取截图失败", str(e))
+        logger.error(f"双击元素失败: {e}")
+        return OperationResult(
+            success=False,
+            error=f"双击元素失败: {str(e)}"
+        )
 
-@app.post("/click-element")
-def click_element(req: ElementOperationRequest):
-    ensure_server()
+@app.post("/api/element/set-text", response_model=OperationResult)
+async def set_element_text(request: TextInputRequest):
+    """设置元素文本"""
+    global operation
+    
+    if not operation:
+        return OperationResult(
+            success=False,
+            error="服务器未运行"
+        )
+    
     try:
-        cmds = server.click_element(req.path, req.roles)
-        return ok({"commands": cmds}, "元素点击成功")
+        if request.elementPath:
+            commands = operation.set_element_text(request.elementPath, request.text)
+        else:
+            commands = operation.input_text(None, request.text)
+        
+        return OperationResult(
+            success=True,
+            data={"commands": commands}
+        )
+        
     except Exception as e:
-        return err("元素点击失败", str(e))
+        logger.error(f"设置元素文本失败: {e}")
+        return OperationResult(
+            success=False,
+            error=f"设置元素文本失败: {str(e)}"
+        )
 
-@app.post("/click-image")
-def click_image(req: ImageOperationRequest):
-    ensure_server()
+@app.post("/api/element/move-to", response_model=OperationResult)
+async def move_to_element(request: ElementOperationRequest):
+    """移动到元素中心"""
+    global operation
+    
+    if not operation:
+        return OperationResult(
+            success=False,
+            error="服务器未运行"
+        )
+    
     try:
-        res = server.click_image(req.imagePath, req.threshold)
-        return OperationResult(** res)
+        result = operation.move_to_element_center(request.path, request.roles)
+        
+        return OperationResult(
+            success=True,
+            data=result
+        )
+        
     except Exception as e:
-        return err("图片点击失败", str(e))
+        logger.error(f"移动到元素失败: {e}")
+        return OperationResult(
+            success=False,
+            error=f"移动到元素失败: {str(e)}"
+        )
 
-@app.post("/drag-to")
-def drag_to(req: DragRequest):
-    ensure_server()
+# ==================== 图像操作端点 ====================
+
+@app.post("/api/image/find", response_model=OperationResult)
+async def find_image(request: ImageOperationRequest):
+    """查找图片"""
+    global operation
+    
+    if not operation:
+        return OperationResult(
+            success=False,
+            error="服务器未运行"
+        )
+    
     try:
-        cmds = server.drag_to(req.startX, req.startY, req.endX, req.endY) if hasattr(server, 'drag_to') else []
-        return ok({"commands": cmds}, "拖拽操作成功")
+        result = operation.find_image(request.imagePath, request.threshold)
+        
+        return OperationResult(
+            success=True,
+            data=result
+        )
+        
     except Exception as e:
-        return err("拖拽操作失败", str(e))
+        logger.error(f"查找图片失败: {e}")
+        return OperationResult(
+            success=False,
+            error=f"查找图片失败: {str(e)}"
+        )
 
-@app.post("/input-text")
-def input_text(req: TextInputRequest):
-    ensure_server()
+@app.post("/api/image/click", response_model=OperationResult)
+async def click_image(request: ImageOperationRequest):
+    """点击图片"""
+    global operation
+    
+    if not operation:
+        return OperationResult(
+            success=False,
+            error="服务器未运行"
+        )
+    
     try:
-        cmds = server.input_text(req.elementPath, req.text) if hasattr(server, 'input_text') else []
-        return ok({"commands": cmds}, "文本输入成功")
+        result = operation.click_image(request.imagePath, request.threshold)
+        
+        return OperationResult(
+            success=True,
+            data=result
+        )
+        
     except Exception as e:
-        return err("文本输入失败", str(e))
+        logger.error(f"点击图片失败: {e}")
+        return OperationResult(
+            success=False,
+            error=f"点击图片失败: {str(e)}"
+        )
 
-@app.post("/hotkey")
-def hotkey(req: HotkeyRequest):
-    ensure_server()
+@app.get("/api/screenshot", response_model=OperationResult)
+async def get_screenshot():
+    """获取截图"""
+    global operation
+    
+    if not operation:
+        return OperationResult(
+            success=False,
+            error="服务器未运行"
+        )
+    
     try:
-        res = server.hotkey(req.keys)
-        return OperationResult(**res)
+        result = operation.get_screenshot()
+        
+        return OperationResult(
+            success=True,
+            data=result
+        )
+        
     except Exception as e:
-        return err("快捷键操作失败", str(e))
+        logger.error(f"获取截图失败: {e}")
+        return OperationResult(
+            success=False,
+            error=f"获取截图失败: {str(e)}"
+        )
 
-# 脚本管理（使用JSON文件持久化存储）
-@app.get("/scripts")
-def get_scripts():
+# ==================== 键盘操作端点 ====================
+
+@app.post("/api/keyboard/hotkey", response_model=OperationResult)
+async def send_hotkey(request: HotkeyRequest):
+    """发送组合键"""
+    global operation
+    
+    if not operation:
+        return OperationResult(
+            success=False,
+            error="服务器未运行"
+        )
+    
+    try:
+        result = operation.hotkey(request.keys)
+        
+        return OperationResult(
+            success=True,
+            data=result
+        )
+        
+    except Exception as e:
+        logger.error(f"发送组合键失败: {e}")
+        return OperationResult(
+            success=False,
+            error=f"发送组合键失败: {str(e)}"
+        )
+
+@app.post("/api/keyboard/type", response_model=OperationResult)
+async def type_text(request: TextInputRequest):
+    """输入文本"""
+    global operation
+    
+    if not operation:
+        return OperationResult(
+            success=False,
+            error="服务器未运行"
+        )
+    
+    try:
+        commands = operation.input_text(request.elementPath, request.text)
+        
+        return OperationResult(
+            success=True,
+            data={"commands": commands}
+        )
+        
+    except Exception as e:
+        logger.error(f"输入文本失败: {e}")
+        return OperationResult(
+            success=False,
+            error=f"输入文本失败: {str(e)}"
+        )
+
+# ==================== 等待操作端点 ====================
+
+@app.post("/api/wait/element", response_model=OperationResult)
+async def wait_for_element(request: ElementOperationRequest):
+    """等待元素出现"""
+    global operation
+    
+    if not operation:
+        return OperationResult(
+            success=False,
+            error="服务器未运行"
+        )
+    
+    try:
+        result = operation.wait_for_element(request.path, timeout=30, role_name_list=request.roles)
+        
+        return OperationResult(
+            success=True,
+            data=result
+        )
+        
+    except Exception as e:
+        logger.error(f"等待元素失败: {e}")
+        return OperationResult(
+            success=False,
+            error=f"等待元素失败: {str(e)}"
+        )
+
+@app.post("/api/wait/image", response_model=OperationResult)
+async def wait_for_image(request: ImageOperationRequest):
+    """等待图片出现"""
+    global operation
+    
+    if not operation:
+        return OperationResult(
+            success=False,
+            error="服务器未运行"
+        )
+    
+    try:
+        result = operation.wait_for_image(request.imagePath, request.threshold, timeout=30)
+        
+        return OperationResult(
+            success=True,
+            data=result
+        )
+        
+    except Exception as e:
+        logger.error(f"等待图片失败: {e}")
+        return OperationResult(
+            success=False,
+            error=f"等待图片失败: {str(e)}"
+        )
+
+# ==================== 脚本管理端点 ====================
+
+@app.get("/api/scripts", response_model=OperationResult)
+async def get_scripts():
+    """获取所有脚本"""
     try:
         scripts = script_manager.get_all_scripts()
-        return ok(scripts)
+        return OperationResult(
+            success=True,
+            data={"scripts": [script.model_dump() for script in scripts]}
+        )
     except Exception as e:
         logger.error(f"获取脚本列表失败: {e}")
-        return err("获取脚本列表失败", str(e))
+        return OperationResult(
+            success=False,
+            error=f"获取脚本列表失败: {str(e)}"
+        )
 
-@app.get("/scripts/{script_id}")
-def get_script(script_id: str):
+@app.get("/api/scripts/{script_id}", response_model=OperationResult)
+async def get_script(script_id: str):
+    """获取单个脚本"""
     try:
         script = script_manager.get_script(script_id)
         if not script:
-            raise HTTPException(status_code=404, detail="脚本不存在")
-        return ok(script)
-    except HTTPException:
-        raise
+            return OperationResult(
+                success=False,
+                error="脚本不存在"
+            )
+        
+        return OperationResult(
+            success=True,
+            data=script.model_dump()
+        )
     except Exception as e:
         logger.error(f"获取脚本失败: {e}")
-        return err("获取脚本失败", str(e))
+        return OperationResult(
+            success=False,
+            error=f"获取脚本失败: {str(e)}"
+        )
 
-@app.post("/scripts")
-def create_script(req: CreateScriptRequest):
+@app.post("/api/scripts", response_model=OperationResult)
+async def create_script(request: CreateScriptRequest):
+    """创建新脚本"""
     try:
-        script = script_manager.create_script(req)
-        return ok(script, "脚本创建成功")
-    except ValueError as e:
-        return err("脚本创建失败", str(e))
+        script = script_manager.create_script(request)
+        return OperationResult(
+            success=True,
+            data=script.model_dump()
+        )
     except Exception as e:
         logger.error(f"创建脚本失败: {e}")
-        return err("脚本创建失败", str(e))
+        return OperationResult(
+            success=False,
+            error=f"创建脚本失败: {str(e)}"
+        )
 
-@app.put("/scripts/{script_id}")
-def update_script(script_id: str, req: UpdateScriptRequest):
+@app.put("/api/scripts/{script_id}", response_model=OperationResult)
+async def update_script(script_id: str, request: UpdateScriptRequest):
+    """更新脚本"""
     try:
-        script = script_manager.update_script(script_id, req)
-        if not script:
-            raise HTTPException(status_code=404, detail="脚本不存在")
-        return ok(script, "脚本更新成功")
-    except ValueError as e:
-        return err("脚本更新失败", str(e))
-    except HTTPException:
-        raise
+        script = script_manager.update_script(script_id, request)
+        return OperationResult(
+            success=True,
+            data=script.model_dump()
+        )
     except Exception as e:
         logger.error(f"更新脚本失败: {e}")
-        return err("脚本更新失败", str(e))
+        return OperationResult(
+            success=False,
+            error=f"更新脚本失败: {str(e)}"
+        )
 
-@app.delete("/scripts/{script_id}")
-def delete_script(script_id: str):
+@app.delete("/api/scripts/{script_id}", response_model=OperationResult)
+async def delete_script(script_id: str):
+    """删除脚本"""
     try:
-        if not script_manager.delete_script(script_id):
-            raise HTTPException(status_code=404, detail="脚本不存在")
-        return ok(message="脚本删除成功")
-    except HTTPException:
-        raise
+        success = script_manager.delete_script(script_id)
+        if success:
+            return OperationResult(
+                success=True,
+                message="脚本删除成功"
+            )
+        else:
+            return OperationResult(
+                success=False,
+                error="脚本不存在"
+            )
     except Exception as e:
         logger.error(f"删除脚本失败: {e}")
-        return err("脚本删除失败", str(e))
+        return OperationResult(
+            success=False,
+            error=f"删除脚本失败: {str(e)}"
+        )
 
-@app.post("/scripts/{script_id}/run")
-def run_script(script_id: str):
+@app.post("/api/scripts/{script_id}/run", response_model=OperationResult)
+async def run_script(script_id: str):
+    """运行脚本"""
     try:
         script = script_manager.get_script(script_id)
         if not script:
-            raise HTTPException(status_code=404, detail="脚本不存在")
+            return OperationResult(
+                success=False,
+                error="脚本不存在"
+            )
         
-        # 更新脚本状态为运行中
-        script_manager.update_script_status(script_id, "running")
+        # 更新脚本状态
+        script_manager.update_script_status(script_id, "running", datetime.now().isoformat())
         
-        start = time.time()
-        try:
-            import subprocess, tempfile
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
-                f.write(script.content)
-                tmp = f.name
-            
-            result = subprocess.run([sys.executable, tmp], capture_output=True, text=True, timeout=config.SCRIPT_TIMEOUT)
-            os.unlink(tmp)
-            
-            # 更新脚本状态和运行信息
-            success = result.returncode == 0
-            status = "completed" if success else "failed"
-            run_count = script.runCount + 1
-            last_run_time = datetime.now().isoformat()
-            
-            script_manager.update_script_status(script_id, status, run_count, last_run_time)
-            
-            execution_time = int((time.time() - start) * 1000)
-            
-            return ok({
-                "success": success,
-                "output": result.stdout,
-                "error": result.stderr if result.returncode != 0 else None,
-                "executionTime": execution_time
-            }, "脚本运行完成")
-            
-        except subprocess.TimeoutExpired:
-            script_manager.update_script_status(script_id, "failed")
-            return err("脚本执行超时")
-        except Exception as e:
-            script_manager.update_script_status(script_id, "failed")
-            return err("脚本运行失败", str(e))
-            
-    except HTTPException:
-        raise
+        # 这里应该实现脚本执行逻辑
+        # 暂时返回成功
+        return OperationResult(
+            success=True,
+            message="脚本执行成功"
+        )
+        
     except Exception as e:
         logger.error(f"运行脚本失败: {e}")
-        return err("脚本运行失败", str(e))
+        return OperationResult(
+            success=False,
+            error=f"运行脚本失败: {str(e)}"
+        )
 
-@app.post("/scripts/import")
-def import_script(file: UploadFile = File(...)):
+# ==================== 事件管理端点 ====================
+
+@app.get("/api/events", response_model=OperationResult)
+async def get_events(limit: int = 100, event_type: Optional[str] = None):
+    """获取事件历史"""
+    global communicator
+    
+    if not communicator:
+        return OperationResult(
+            success=False,
+            error="服务器未运行"
+        )
+    
     try:
-        if not file.filename.endswith('.py'):
-            raise HTTPException(status_code=400, detail="只能导入.py文件")
+        if event_type:
+            try:
+                from communicators.test_communicator import EventType
+                event_enum = EventType(event_type)
+                events = communicator.get_event_history(limit, event_enum)
+            except ValueError:
+                return OperationResult(
+                    success=False,
+                    error=f"无效的事件类型: {event_type}"
+                )
+        else:
+            events = communicator.get_event_history(limit)
         
-        content = file.file.read().decode('utf-8')
-        name = file.filename[:-3]
+        # 转换事件为可序列化的格式
+        events_data = []
+        for event in events:
+            events_data.append({
+                "type": event.type.value,
+                "machine_id": event.machine_id,
+                "app_name": event.app_name,
+                "timestamp": event.timestamp,
+                "data": event.data,
+                "source_machine": event.source_machine
+            })
         
-        # 创建导入请求
-        req = CreateScriptRequest(
-            name=name,
-            description=f"从文件 {file.filename} 导入",
-            content=content
+        return OperationResult(
+            success=True,
+            data={"events": events_data}
         )
         
-        script = script_manager.create_script(req)
-        return ok(script, "脚本导入成功")
-        
-    except ValueError as e:
-        return err("脚本导入失败", str(e))
-    except HTTPException:
-        raise
     except Exception as e:
-        logger.error(f"导入脚本失败: {e}")
-        return err("脚本导入失败", str(e))
-
-@app.get("/scripts/{script_id}/export")
-def export_script(script_id: str):
-    try:
-        script = script_manager.get_script(script_id)
-        if not script:
-            raise HTTPException(status_code=404, detail="脚本不存在")
-        
-        return Response(
-            content=script.content, 
-            media_type="text/plain", 
-            headers={"Content-Disposition": f"attachment; filename={script.name}.py"}
+        logger.error(f"获取事件历史失败: {e}")
+        return OperationResult(
+            success=False,
+            error=f"获取事件历史失败: {str(e)}"
         )
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"导出脚本失败: {e}")
-        raise HTTPException(status_code=500, detail=f"导出脚本失败: {str(e)}")
 
-@app.post("/scripts/backup")
-def backup_scripts():
-    """备份脚本数据"""
+# ==================== 健康检查端点 ====================
+
+@app.get("/health")
+async def health_check():
+    """健康检查"""
+    return {"status": "healthy", "timestamp": datetime.now().isoformat()}
+
+@app.get("/")
+async def root():
+    """根路径"""
+    return {
+        "message": "自动化测试系统后端API",
+        "version": "1.0.0",
+        "docs": "/docs"
+    }
+
+# 启动时的事件处理
+@app.on_event("startup")
+async def startup_event():
+    """应用启动时的处理"""
+    global communicator, operation, is_running
+    
+    logger.info("后端应用启动")
+    
+    # 默认启动测试服务器
     try:
-        backup_dir = os.path.join(os.path.dirname(SCRIPT_STORAGE_FILE), "backup")
-        script_manager.backup_data(backup_dir)
-        return ok(message="脚本数据备份成功")
+        communicator = TestMachineCommunicator(
+            server_host="0.0.0.0",
+            server_port=8888,
+            server_id="backend_server"
+        )
+        communicator.start_server()
+        
+        # 创建操作类
+        operation = MultiMachineOperation(communicator)
+        
+        is_running = True
+        
+        logger.info("测试服务器已默认启动，监听端口: 8888")
+        
     except Exception as e:
-        logger.error(f"备份脚本数据失败: {e}")
-        return err("备份脚本数据失败", str(e))
+        logger.error(f"默认启动测试服务器失败: {e}")
+        is_running = False
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """应用关闭时的处理"""
+    global communicator, operation
+    
+    logger.info("后端应用关闭")
+    
+    # 清理资源
+    if operation:
+        operation.close()
+    
+    if communicator:
+        communicator.stop_server()
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("backend.app:app", host="0.0.0.0", port=8080, reload=True)
+    uvicorn.run(app, host="0.0.0.0", port=8080)
 

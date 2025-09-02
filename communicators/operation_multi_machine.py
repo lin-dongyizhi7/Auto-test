@@ -2,40 +2,35 @@
 """
 多机器环境下的操作类
 
-这个类封装了在多机器环境下的Dogtail交互操作，支持：
-1. 与多台被测试机器通信
-2. 与不同应用进行交互
-3. 跨机器的操作协调
-4. 事件同步和状态监控
+这个类专注于在多机器环境下的元素操作，包括：
+1. 鼠标操作（点击、移动、拖拽）
+2. 键盘操作（输入、快捷键）
+3. 元素查找和定位
+4. 截图和图像识别
+5. 操作指令的生成和执行
 
-使用方法：
-1. 在测试控制机器上运行test_communicator.py作为服务器
-2. 在被测试机器上运行tested_communicator.py作为客户端
-3. 使用本类进行跨机器的自动化操作
+多机器连接和事件管理由 TestMachineCommunicator 负责
 """
 
 import json
 import time
 import logging
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Optional, Union, Any
 from .test_communicator import TestMachineCommunicator, EventType, Event
 
 class MultiMachineOperation:
     """
-    多机器环境下的操作类，支持与多台机器和多个应用进行交互
+    多机器环境下的操作类，专注于元素操作
+    多机器连接和事件管理由 TestMachineCommunicator 负责
     """
     
-    def __init__(self, bind_host: str = "0.0.0.0", server_port: int = 8888, retry_interval_sec: int = 3):
+    def __init__(self, communicator: TestMachineCommunicator):
         """
-        初始化多机器操作类，并在本机启动测试服务器（长期监听）
+        初始化多机器操作类
         
-        :param bind_host: 测试服务器绑定地址
-        :param server_port: 测试服务器端口
-        :param retry_interval_sec: 启动失败后的重试间隔
+        :param communicator: TestMachineCommunicator 实例，负责多机器连接和事件管理
         """
-        self.bind_host = bind_host
-        self.server_port = server_port
-        self.retry_interval_sec = retry_interval_sec
+        self.communicator = communicator
         
         # 存储操作指令
         self.opts = []  # 当前操作的指令序列
@@ -53,21 +48,7 @@ class MultiMachineOperation:
         self.logger = logging.getLogger(self.__class__.__name__)
         self.logger.setLevel(logging.INFO)
         
-        # 启动本地测试服务器（保持监听，失败重试）
-        self.server = None
-        self._start_server_with_retry()
-    
-    def _start_server_with_retry(self) -> None:
-        """在本机启动测试服务器；若端口被占用或失败则定时重试，不中断运行"""
-        while True:
-            try:
-                self.server = TestMachineCommunicator(server_host=self.bind_host, server_port=self.server_port)
-                self.server.start_server()
-                self.logger.info(f"测试服务器已启动并监听 {self.bind_host}:{self.server_port}")
-                break
-            except Exception as e:
-                self.logger.error(f"测试服务器启动失败: {str(e)}，将在{self.retry_interval_sec}s后重试…")
-                time.sleep(self.retry_interval_sec)
+        self.logger.info("多机器操作类已初始化")
     
     def set_target(self, machine_id: str, app_name: str) -> bool:
         """
@@ -80,7 +61,7 @@ class MultiMachineOperation:
         try:
             # 验证机器和应用是否存在
             target_app_id = f"{machine_id}:{app_name}"
-            if target_app_id not in self.server.apps:
+            if target_app_id not in self.communicator.apps:
                 self.logger.error(f"应用 {app_name} 在机器 {machine_id} 上未注册")
                 return False
             
@@ -96,7 +77,7 @@ class MultiMachineOperation:
     def get_available_machines(self) -> List[str]:
         """获取可用的机器列表"""
         try:
-            return list(self.server.machines.keys())
+            return list(self.communicator.machines.keys())
         except Exception as e:
             self.logger.error(f"获取机器列表失败: {str(e)}")
             return []
@@ -104,13 +85,25 @@ class MultiMachineOperation:
     def get_available_apps(self, machine_id: str = None) -> List[Dict]:
         """获取可用的应用列表"""
         try:
-            apps = self.server.apps
+            apps = self.communicator.apps
             if machine_id:
                 return [app for aid, app in apps.items() if app["machine_id"] == machine_id]
             return list(apps.values())
         except Exception as e:
             self.logger.error(f"获取应用列表失败: {str(e)}")
             return []
+    
+    def get_machine_status(self, machine_id: str) -> Dict[str, Any]:
+        """获取指定机器的状态"""
+        return self.communicator.get_machine_status(machine_id)
+    
+    def get_app_status(self, app_id: str) -> Dict[str, Any]:
+        """获取指定应用的状态"""
+        return self.communicator.get_app_status(app_id)
+    
+    def get_connection_summary(self) -> Dict[str, Any]:
+        """获取连接状态摘要"""
+        return self.communicator.get_connection_summary()
     
     def _generate_command(self, action: str, params: Dict) -> Dict:
         """
@@ -139,6 +132,8 @@ class MultiMachineOperation:
             return False
         return True
     
+    # ==================== 图像识别和截图操作 ====================
+    
     def find_image(self, image_path: str, threshold: float = 0.8, region: Optional[List[int]] = None) -> Dict:
         """
         查找图片位置
@@ -153,8 +148,8 @@ class MultiMachineOperation:
         
         self.logger.info(f"在机器 {self.current_machine_id} 的应用 {self.current_app_name} 上查找图片: {image_path}")
         
-        # 获取截图（通过本地测试服务器转发到目标机器）
-        response = self.server._forward_request_to_machine(
+        # 获取截图（通过通信器转发到目标机器）
+        response = self.communicator._forward_request_to_machine(
             self.current_machine_id,
             "get_screenshot",
             {"app_name": self.current_app_name, "region": region}
@@ -174,6 +169,65 @@ class MultiMachineOperation:
                 "app_name": self.current_app_name
             }
         }
+    
+    def get_screenshot(self, region: Optional[List[int]] = None) -> Dict:
+        """
+        获取当前目标应用的截图
+        
+        :param region: 可选区域 [x, y, width, height]
+        :return: 截图结果
+        """
+        if not self._check_target_set():
+            return {"success": False, "error": "未设置目标机器和应用"}
+        
+        return self.communicator._forward_request_to_machine(
+            self.current_machine_id,
+            "get_screenshot",
+            {"app_name": self.current_app_name, "region": region}
+        )
+    
+    # ==================== 元素定位操作 ====================
+    
+    def get_location(self, element_path: str, role_name_list: Optional[List[str]] = None) -> Dict[str, Any]:
+        """
+        获取元素位置信息
+        
+        :param element_path: 元素路径，格式"父元素1/父元素2/目标元素"
+        :param role_name_list: 元素角色名列表（可选），支持多个角色名匹配
+        :return: 元素位置信息字典，包含{x,y,width,height,center_x,center_y}
+        """
+        if not self._check_target_set():
+            raise ValueError("请先使用 set_target() 设置目标机器和应用")
+        
+        # 通过通信器转发到目标机器
+        response = self.communicator._forward_request_to_machine(
+            self.current_machine_id,
+            "get_element",
+            {
+                "app_name": self.current_app_name,
+                "element_path": element_path,
+                "role_name_list": role_name_list,
+            }
+        )
+        
+        # 验证响应是否成功
+        if not response.get("success", False):
+            raise ValueError(f"获取元素位置失败: {response.get('error', '未知错误')}")
+        
+        # 提取并返回必要的位置信息
+        element_data = response["data"]
+        position = element_data["position"]
+        size = element_data["size"]
+        return {
+            "x": position["x"],
+            "y": position["y"],
+            "width": size["width"],
+            "height": size["height"],
+            "center_x": position["x"] + size["width"] // 2,
+            "center_y": position["y"] + size["height"] // 2
+        }
+    
+    # ==================== 鼠标操作 ====================
     
     def click_image(self, image_path: str, threshold: float = 0.8, region: Optional[List[int]] = None) -> Dict:
         """
@@ -202,45 +256,6 @@ class MultiMachineOperation:
         result = self._execute_commands_on_target(commands)
         self.opts = []
         return result
-    
-    def get_location(self, element_path: str, role_name_list: Optional[List[str]] = None) -> Dict[str, any]:
-        """
-        获取元素位置信息
-        
-        :param element_path: 元素路径，格式"父元素1/父元素2/目标元素"
-        :param role_name_list: 元素角色名列表（可选），支持多个角色名匹配
-        :return: 元素位置信息字典，包含{x,y,width,height,center_x,center_y}
-        """
-        if not self._check_target_set():
-            raise ValueError("请先使用 set_target() 设置目标机器和应用")
-        
-        # 通过本地测试服务器转发到目标机器
-        response = self.server._forward_request_to_machine(
-            self.current_machine_id,
-            "get_element",
-            {
-                "app_name": self.current_app_name,
-                "element_path": element_path,
-                "role_name_list": role_name_list,
-            }
-        )
-        
-        # 验证响应是否成功
-        if not response.get("success", False):
-            raise ValueError(f"获取元素位置失败: {response.get('error', '未知错误')}")
-        
-        # 提取并返回必要的位置信息
-        element_data = response["data"]
-        position = element_data["position"]
-        size = element_data["size"]
-        return {
-            "x": position["x"],
-            "y": position["y"],
-            "width": size["width"],
-            "height": size["height"],
-            "center_x": position["x"] + size["width"] // 2,
-            "center_y": position["y"] + size["height"] // 2
-        }
     
     def click_element(self, element_path: str, role_name_list: Optional[List[str]] = None) -> List[Dict]:
         """
@@ -326,6 +341,78 @@ class MultiMachineOperation:
         
         self.finish_current_opts(commands)
         return commands
+    
+    def move_to(self, x: int, y: int) -> Dict:
+        """
+        生成鼠标移动到指定位置的指令
+        
+        :param x: X坐标
+        :param y: Y坐标
+        """
+        if not self._check_target_set():
+            return {"success": False, "error": "未设置目标机器和应用"}
+        
+        commands = [self._generate_command("mouse_move", {"x": x, "y": y})]
+        self.finish_current_opts(commands)
+        return {"success": True, "commands": commands}
+    
+    def move_to_element_center(self, element_path: str, role_name_list: Optional[List[str]] = None) -> Dict:
+        """
+        生成鼠标移动到元素中心的指令
+        
+        :param element_path: 元素路径
+        :param role_name_list: 元素角色名列表（可选）
+        """
+        if not self._check_target_set():
+            return {"success": False, "error": "未设置目标机器和应用"}
+        
+        loc = self.get_location(element_path, role_name_list)
+        return self.move_to(loc["center_x"], loc["center_y"])
+    
+    def drag_and_drop(self, start_element: str, end_element: str, role_name_list: Optional[List[str]] = None) -> List[Dict]:
+        """
+        生成拖拽操作的指令
+        
+        :param start_element: 起始元素路径
+        :param end_element: 目标元素路径
+        :param role_name_list: 元素角色名列表（可选）
+        """
+        if not self._check_target_set():
+            return []
+        
+        start_loc = self.get_location(start_element, role_name_list)
+        end_loc = self.get_location(end_element, role_name_list)
+        commands = []
+        
+        # 移动到起始元素
+        commands.append(self._generate_command(
+            "mouse_move",
+            {"x": start_loc["center_x"], "y": start_loc["center_y"]}
+        ))
+        
+        # 按下鼠标左键
+        commands.append(self._generate_command(
+            "mouse_press",
+            {"x": start_loc["center_x"], "y": start_loc["center_y"], "button": "left"}
+        ))
+        
+        # 拖拽到目标位置
+        commands.append(self._generate_command(
+            "mouse_drag",
+            {"start_x": start_loc["center_x"], "start_y": start_loc["center_y"],
+             "end_x": end_loc["center_x"], "end_y": end_loc["center_y"]}
+        ))
+        
+        # 释放鼠标左键
+        commands.append(self._generate_command(
+            "mouse_release",
+            {"x": end_loc["center_x"], "y": end_loc["center_y"], "button": "left"}
+        ))
+        
+        self.finish_current_opts(commands)
+        return commands
+    
+    # ==================== 键盘操作 ====================
     
     def set_element_text(self, element_path: str, text: str, role_name_list: Optional[List[str]] = None) -> List[Dict]:
         """
@@ -423,32 +510,78 @@ class MultiMachineOperation:
         self.finish_current_opts(commands)
         return {"success": True, "commands": commands}
     
-    def move_to(self, x: int, y: int) -> Dict:
+    def key_press(self, key: str) -> Dict:
         """
-        生成鼠标移动到指定位置的指令
+        生成按键操作的指令
         
-        :param x: X坐标
-        :param y: Y坐标
+        :param key: 按键名称
         """
         if not self._check_target_set():
             return {"success": False, "error": "未设置目标机器和应用"}
         
-        commands = [self._generate_command("mouse_move", {"x": x, "y": y})]
+        commands = [self._generate_command("key_press", {"key": key})]
         self.finish_current_opts(commands)
         return {"success": True, "commands": commands}
     
-    def move_to_element_center(self, element_path: str, role_name_list: Optional[List[str]] = None) -> Dict:
+    def key_release(self, key: str) -> Dict:
         """
-        生成鼠标移动到元素中心的指令
+        生成按键释放的指令
+        
+        :param key: 按键名称
+        """
+        if not self._check_target_set():
+            return {"success": False, "error": "未设置目标机器和应用"}
+        
+        commands = [self._generate_command("key_release", {"key": key})]
+        self.finish_current_opts(commands)
+        return {"success": True, "commands": commands}
+    
+    # ==================== 等待和验证操作 ====================
+    
+    def wait_for_element(self, element_path: str, timeout: int = 30, role_name_list: Optional[List[str]] = None) -> Dict:
+        """
+        等待元素出现
         
         :param element_path: 元素路径
+        :param timeout: 超时时间（秒）
         :param role_name_list: 元素角色名列表（可选）
         """
         if not self._check_target_set():
             return {"success": False, "error": "未设置目标机器和应用"}
         
-        loc = self.get_location(element_path, role_name_list)
-        return self.move_to(loc["center_x"], loc["center_y"])
+        start_time = time.time()
+        while time.time() - start_time < timeout:
+            try:
+                loc = self.get_location(element_path, role_name_list)
+                return {"success": True, "data": loc}
+            except ValueError:
+                time.sleep(0.5)
+                continue
+        
+        return {"success": False, "error": f"等待元素 {element_path} 超时"}
+    
+    def wait_for_image(self, image_path: str, threshold: float = 0.8, timeout: int = 30, region: Optional[List[int]] = None) -> Dict:
+        """
+        等待图片出现
+        
+        :param image_path: 图片路径
+        :param threshold: 匹配阈值
+        :param timeout: 超时时间（秒）
+        :param region: 查找区域
+        """
+        if not self._check_target_set():
+            return {"success": False, "error": "未设置目标机器和应用"}
+        
+        start_time = time.time()
+        while time.time() - start_time < timeout:
+            result = self.find_image(image_path, threshold, region)
+            if result.get("success"):
+                return result
+            time.sleep(0.5)
+        
+        return {"success": False, "error": f"等待图片 {image_path} 超时"}
+    
+    # ==================== 指令执行管理 ====================
     
     def _execute_commands_on_target(self, commands: List[Dict]) -> Dict:
         """
@@ -461,7 +594,7 @@ class MultiMachineOperation:
             return {"success": False, "error": "未设置目标机器和应用"}
         
         try:
-            response = self.server._forward_request_to_machine(
+            response = self.communicator._forward_request_to_machine(
                 self.current_machine_id,
                 "exec_commands",
                 {"app_name": self.current_app_name, "commands": commands}
@@ -492,7 +625,7 @@ class MultiMachineOperation:
         result = self._execute_commands_on_target(commands)
         self.logger.info(f"执行指令集结果: {result}")
     
-    def execute_commands(self) -> Dict[str, any]:
+    def execute_commands(self) -> Dict[str, Any]:
         """
         执行当前指令集中的所有指令
         
@@ -505,6 +638,8 @@ class MultiMachineOperation:
         self.opts = []
         return result
     
+    # ==================== 工具方法 ====================
+    
     def export_to_json(self, file_path: str) -> None:
         """
         将.commands_list导出为JSON文件
@@ -514,59 +649,21 @@ class MultiMachineOperation:
         with open(file_path, 'w', encoding='utf-8') as f:
             json.dump(self.commands_list, f, ensure_ascii=False, indent=2)
     
-    def get_screenshot(self, region: Optional[List[int]] = None) -> Dict:
-        """
-        获取当前目标应用的截图
-        
-        :param region: 可选区域 [x, y, width, height]
-        :return: 截图结果
-        """
-        if not self._check_target_set():
-            return {"success": False, "error": "未设置目标机器和应用"}
-        
-        return self.server._forward_request_to_machine(
-            self.current_machine_id,
-            "get_screenshot",
-            {"app_name": self.current_app_name, "region": region}
-        )
+    def clear_commands(self) -> None:
+        """清空所有指令"""
+        self.opts = []
+        self.commands_list = []
+        self.logger.info("已清空所有指令")
     
-    def subscribe_events(self) -> Dict:
-        """订阅事件通知（本地调用无客户端身份，这里返回成功并依赖事件历史查询）"""
-        self.logger.info("事件订阅在本地模式下为无操作（No-Op）")
-        return {"success": True}
-    
-    def unsubscribe_events(self) -> Dict:
-        """取消订阅事件通知（本地模式No-Op）"""
-        self.logger.info("事件取消订阅在本地模式下为无操作（No-Op）")
-        return {"success": True}
-    
-    def sync_event(self, event_type: str, data: Dict) -> Dict:
-        """
-        同步事件到测试服务器
-        
-        :param event_type: 事件类型
-        :param data: 事件数据
-        :return: 同步结果
-        """
-        try:
-            evt = Event(
-                type=EventType(event_type) if isinstance(event_type, str) else event_type,
-                machine_id=self.current_machine_id or "controller",
-                app_name=self.current_app_name,
-                timestamp=time.time(),
-                data=data or {},
-                source_machine=self.current_machine_id or "controller",
-            )
-            self.server._publish_event(evt)
-            return {"success": True}
-        except Exception as e:
-            return {"success": False, "error": str(e)}
+    def get_commands_count(self) -> Dict[str, int]:
+        """获取指令统计信息"""
+        return {
+            "current_opts": len(self.opts),
+            "total_commands": len(self.commands_list),
+            "total_individual_commands": sum(len(cmd_list) for cmd_list in self.commands_list)
+        }
     
     def close(self) -> None:
-        """停止本地测试服务器并清理"""
-        try:
-            if getattr(self, "server", None):
-                self.server.stop_server()
-        finally:
-            self.logger.info("本地测试服务器已停止")
+        """清理资源"""
+        self.logger.info("多机器操作类已关闭")
 
