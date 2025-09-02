@@ -667,3 +667,128 @@ class MultiMachineOperation:
         """清理资源"""
         self.logger.info("多机器操作类已关闭")
 
+    # ==================== 脚本执行（JSON） ====================
+
+    def run_script_from_file(self, file_path: str) -> Dict[str, Any]:
+        """
+        从 JSON 文件读取测试脚本并执行
+
+        脚本示例结构：
+        {
+            "target_machine_id": "machine_001",
+            "target_app_name": "calculator",
+            "steps": [
+                {"id": "1", "type": "wait_element", "element_path": "菜单/文件", "role_name_list": ["menu item"], "description": "等待菜单"},
+                {"id": "2", "type": "click_element", "element_path": "菜单/文件/新建", "role_name_list": ["menu item"], "children": [
+                    {"id": "2.1", "type": "wait_element", "element_path": "新建对话框/确定", "role_name_list": ["push button"]},
+                    {"id": "2.2", "type": "click_element", "element_path": "新建对话框/确定", "role_name_list": ["push button"]}
+                ]}
+            ]
+        }
+        """
+        with open(file_path, "r", encoding="utf-8") as f:
+            script_obj = json.load(f)
+        return self.run_script(script_obj)
+
+    def run_script(self, script: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        执行传入的脚本对象（同 run_script_from_file 的结构）
+        - 若提供 target_machine_id/target_app_name，则先 set_target
+        - 递归执行 steps，父步骤等待所有子步骤完成
+        - 任一步失败将停止并返回错误
+        """
+        target_machine_id = script.get("target_machine_id")
+        target_app_name = script.get("target_app_name")
+        if target_machine_id and target_app_name:
+            ok = self.set_target(target_machine_id, target_app_name)
+            if not ok:
+                return {"success": False, "error": f"设置目标失败: {target_machine_id}/{target_app_name}"}
+
+        steps: List[Dict[str, Any]] = script.get("steps", [])
+        if not isinstance(steps, list) or not steps:
+            return {"success": False, "error": "脚本缺少 steps 或 steps 为空"}
+
+        for step in steps:
+            result = self._execute_step(step)
+            if not result.get("success"):
+                return {"success": False, "error": result.get("error", "未知错误"), "failed_step": step.get("id")}
+
+        return {"success": True}
+
+    def _execute_step(self, step: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        执行单个步骤并在存在子步骤时递归执行：
+        - 先执行当前步骤自身操作（若 type 可映射到现有方法）
+        - 然后依次执行 children（若存在），父步骤等待所有子步骤成功
+        - 任意失败立即返回失败
+        支持的 type（可扩展）：
+        - click_element, right_click_element, double_click_element
+        - input_text（需 text 字段，可选 element_path）
+        - hotkey（需 keys: List[str]）
+        - wait_element
+        - click_image（需 image_path, 可选 threshold）
+        - move_to_element_center
+        """
+        step_type = step.get("type")
+        if not step_type:
+            return {"success": False, "error": "步骤缺少 type"}
+
+        # 1) 执行当前步骤
+        try:
+            exec_result = self._dispatch_step(step)
+            if exec_result is not None and isinstance(exec_result, dict) and not exec_result.get("success", True):
+                return exec_result
+        except Exception as e:
+            return {"success": False, "error": f"执行步骤异常: {e}"}
+
+        # 2) 执行子步骤（若存在）
+        children = step.get("children") or step.get("steps")
+        if children and isinstance(children, list):
+            for child in children:
+                child_result = self._execute_step(child)
+                if not child_result.get("success"):
+                    return child_result
+
+        return {"success": True}
+
+    def _dispatch_step(self, step: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """
+        将 step 映射到已有操作方法并执行。
+        返回：
+        - 对需要返回状态的操作，返回 {success: bool, ...}
+        - 对仅生成/发送指令的方法，返回 None 或成功结构
+        """
+        step_type = step.get("type")
+        element_path = step.get("element_path")
+        role_name_list = step.get("role_name_list")
+
+        if step_type == "click_element":
+            self.click_element(element_path, role_name_list)
+            return {"success": True}
+        if step_type == "right_click_element":
+            self.right_click_element(element_path, role_name_list)
+            return {"success": True}
+        if step_type == "double_click_element":
+            self.double_click_element(element_path, role_name_list)
+            return {"success": True}
+        if step_type == "move_to_element_center":
+            res = self.move_to_element_center(element_path, role_name_list)
+            return res if isinstance(res, dict) else {"success": True}
+        if step_type == "input_text":
+            text = step.get("text", "")
+            self.input_text(element_path, text, role_name_list)
+            return {"success": True}
+        if step_type == "hotkey":
+            keys = step.get("keys") or []
+            return self.hotkey(keys)
+        if step_type == "wait_element":
+            timeout = int(step.get("timeout", 30))
+            return self.wait_for_element(element_path, timeout=timeout, role_name_list=role_name_list)
+        if step_type == "click_image":
+            image_path = step.get("image_path") or step.get("imagePath")
+            threshold = float(step.get("threshold", 0.8))
+            return self.click_image(image_path, threshold)
+
+        # 未知类型：忽略或失败，这里选择失败以便提示
+        return {"success": False, "error": f"不支持的步骤类型: {step_type}"}
+
