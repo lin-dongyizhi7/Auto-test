@@ -22,6 +22,7 @@ import subprocess
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from communicators.operation_multi_machine import MultiMachineOperation
+from communicators.test_communicator import TestMachineCommunicator
 import app_config as config
 
 # 配置日志
@@ -150,6 +151,7 @@ class AutoTestApp:
         self.setup_styles()
         
         # 初始化组件
+        self.communicator: Optional[TestMachineCommunicator] = None
         self.server: Optional[MultiMachineOperation] = None
         self.is_running = False
         self.current_machine_id: Optional[str] = None
@@ -166,6 +168,23 @@ class AutoTestApp:
         
         self.setup_ui()
         self.setup_logging()
+        
+        # 启动TestMachineCommunicator
+        self.start_communicator()
+        
+    def start_communicator(self):
+        """启动TestMachineCommunicator"""
+        try:
+            self.communicator = TestMachineCommunicator(
+                server_host=config.DEFAULT_HOST,
+                server_port=config.DEFAULT_PORT
+            )
+            self.communicator.start_server()
+            logger.info("TestMachineCommunicator 已启动")
+            self.update_status("TestMachineCommunicator 已启动")
+        except Exception as e:
+            logger.error(f"启动 TestMachineCommunicator 失败: {e}")
+            self.update_status("TestMachineCommunicator 启动失败")
         
     def setup_styles(self):
         """设置应用样式"""
@@ -532,20 +551,27 @@ class AutoTestApp:
     @handle_exceptions
     def start_server(self):
         """启动服务器"""
-        self.server = MultiMachineOperation(
-            bind_host=config.DEFAULT_HOST,
-            server_port=config.DEFAULT_PORT
-        )
-        self.is_running = True
-        
-        self.status_label.config(text=f"服务器状态: 运行中 ({config.DEFAULT_HOST}:{config.DEFAULT_PORT})")
-        self.start_btn.config(state=tk.DISABLED)
-        self.stop_btn.config(state=tk.NORMAL)
-        self.connection_status.config(text="已连接")
-        
-        messagebox.showinfo("成功", f"服务器已启动 {config.DEFAULT_HOST}:{config.DEFAULT_PORT}")
-        logger.info(f"服务器已启动 {config.DEFAULT_HOST}:{config.DEFAULT_PORT}")
-        self.update_status("服务器运行中")
+        try:
+            # 检查TestMachineCommunicator是否已启动
+            if not self.communicator or not self.communicator.is_running:
+                messagebox.showwarning("警告", "TestMachineCommunicator 未启动，请先启动")
+                return
+            
+            self.server = MultiMachineOperation(self.communicator)
+            self.is_running = True
+            
+            self.status_label.config(text=f"服务器状态: 运行中 ({config.DEFAULT_HOST}:{config.DEFAULT_PORT})")
+            self.start_btn.config(state=tk.DISABLED)
+            self.stop_btn.config(state=tk.NORMAL)
+            self.connection_status.config(text="已连接")
+            
+            messagebox.showinfo("成功", f"服务器已启动 {config.DEFAULT_HOST}:{config.DEFAULT_PORT}")
+            logger.info(f"服务器已启动 {config.DEFAULT_HOST}:{config.DEFAULT_PORT}")
+            self.update_status("服务器运行中")
+        except Exception as e:
+            logger.error(f"启动服务器失败: {e}")
+            messagebox.showerror("错误", f"启动服务器失败: {str(e)}")
+            self.update_status("服务器启动失败")
     
     @handle_exceptions
     def stop_server(self):
@@ -578,20 +604,39 @@ class AutoTestApp:
         # 获取机器列表
         machines = self.server.get_available_machines()
         for machine_id in machines:
-            # 这里可以根据实际的机器信息来填充数据
-            # 暂时使用模拟数据
+            # 从TestMachineCommunicator获取机器信息
+            machine_info = self.get_machine_info(machine_id)
             current_time = datetime.now().strftime("%H:%M:%S")
+            
             self.machine_tree.insert("", "end", values=(
                 machine_id, 
-                "127.0.0.1",  # IP地址
-                "8888",        # 端口
-                "已连接",      # 状态
-                "测试应用",     # 应用名称
+                machine_info.get('ip', '127.0.0.1'),  # IP地址
+                machine_info.get('port', '8888'),      # 端口
+                machine_info.get('status', '已连接'),  # 状态
+                machine_info.get('apps', '测试应用'),   # 应用名称
                 current_time    # 连接时间
             ))
         
         logger.info(f"机器列表已刷新，共 {len(machines)} 台机器")
         self.update_status(f"机器列表已刷新，共 {len(machines)} 台机器")
+        
+    def get_machine_info(self, machine_id: str) -> dict:
+        """获取机器信息"""
+        if not self.communicator:
+            return {}
+        
+        try:
+            machine_info = self.communicator.machines.get(machine_id, {})
+            return {
+                'ip': machine_info.get('ip', '127.0.0.1'),
+                'port': machine_info.get('port', '8888'),
+                'status': '已连接' if machine_id in self.communicator.connections else '未连接',
+                'apps': ', '.join([app for app_id, app in self.communicator.apps.items() 
+                                 if app_id.startswith(f"{machine_id}:")])
+            }
+        except Exception as e:
+            logger.error(f"获取机器 {machine_id} 信息失败: {e}")
+            return {}
         
     def update_status(self, message):
         """更新状态栏信息"""
@@ -692,21 +737,40 @@ class AutoTestApp:
             return
         
         try:
-            # 调用服务器的连接方法
-            if hasattr(self.server, 'connect_to_machine') and callable(getattr(self.server, 'connect_to_machine')):
-                result = self.server.connect_to_machine(machine_id, ip, port_num)
-                if result.get("success"):
-                    messagebox.showinfo("成功", f"成功连接到机器 {machine_id}")
-                    dialog.destroy()
-                    # 刷新机器列表
-                    self.refresh_machines()
-                else:
-                    messagebox.showerror("错误", f"连接失败: {result.get('error', '未知错误')}")
-            else:
-                # 如果没有connect_to_machine方法，尝试其他方式
-                messagebox.showinfo("信息", f"尝试连接到 {ip}:{port}")
-                dialog.destroy()
-                self.refresh_machines()
+            # 检查TestMachineCommunicator是否已启动
+            if not self.communicator or not self.communicator.is_running:
+                messagebox.showerror("错误", "TestMachineCommunicator 未启动")
+                return
+            
+            # 模拟连接到测试机器（实际应用中这里会建立真实的连接）
+            # 在TestMachineCommunicator中添加机器信息
+            if hasattr(self.communicator, 'add_machine'):
+                self.communicator.add_machine(machine_id, {
+                    'ip': ip,
+                    'port': port_num,
+                    'status': 'connected',
+                    'apps': [app_name]
+                })
+                
+                # 添加应用信息
+                app_id = f"{machine_id}:{app_name}"
+                if hasattr(self.communicator, 'add_app'):
+                    self.communicator.add_app(app_id, {
+                        'machine_id': machine_id,
+                        'app_name': app_name,
+                        'description': desc,
+                        'status': 'running'
+                    })
+            
+            messagebox.showinfo("成功", f"成功连接到机器 {machine_id}")
+            dialog.destroy()
+            
+            # 刷新机器列表
+            self.refresh_machines()
+            
+            # 更新状态
+            self.update_status(f"已连接到机器 {machine_id}")
+            logger.info(f"成功连接到机器 {machine_id} ({ip}:{port})")
                 
         except Exception as e:
             messagebox.showerror("错误", f"创建连接失败: {str(e)}")
@@ -723,17 +787,20 @@ class AutoTestApp:
         
         if messagebox.askyesno("确认", f"确定要断开机器 {machine_id} 的连接吗？"):
             try:
-                if hasattr(self.server, 'disconnect_machine') and callable(getattr(self.server, 'disconnect_machine')):
-                    result = self.server.disconnect_machine(machine_id)
-                    if result.get("success"):
-                        messagebox.showinfo("成功", f"机器 {machine_id} 已断开")
-                        self.refresh_machines()
-                    else:
-                        messagebox.showerror("错误", f"断开失败: {result.get('error')}")
-                else:
-                    # 如果没有disconnect_machine方法，尝试其他方式
-                    messagebox.showinfo("信息", f"尝试断开机器 {machine_id}")
-                    self.refresh_machines()
+                # 从TestMachineCommunicator中移除机器
+                if self.communicator and hasattr(self.communicator, 'remove_machine'):
+                    self.communicator.remove_machine(machine_id)
+                
+                # 如果当前目标机器是被断开的机器，清除目标设置
+                if self.current_machine_id == machine_id:
+                    self.current_machine_id = None
+                    self.current_app_name = None
+                    self.current_target_label.config(text="未设置", foreground="gray")
+                
+                messagebox.showinfo("成功", f"机器 {machine_id} 已断开")
+                self.refresh_machines()
+                self.update_status(f"机器 {machine_id} 已断开")
+                logger.info(f"机器 {machine_id} 已断开")
                     
             except Exception as e:
                 messagebox.showerror("错误", f"断开连接失败: {str(e)}")
@@ -1080,8 +1147,26 @@ IP地址: {machine_ip}
         except KeyboardInterrupt:
             logger.info("应用被用户中断")
         finally:
+            self.cleanup()
+    
+    def cleanup(self):
+        """清理资源"""
+        try:
+            # 关闭服务器
             if self.server:
                 self.server.close()
+                logger.info("服务器已关闭")
+            
+            # 关闭TestMachineCommunicator
+            if self.communicator:
+                if hasattr(self.communicator, 'stop_server'):
+                    self.communicator.stop_server()
+                logger.info("TestMachineCommunicator 已关闭")
+                
+        except Exception as e:
+            logger.error(f"清理资源时发生错误: {e}")
+        
+        logger.info("应用资源清理完成")
 
 def main():
     """主函数"""
