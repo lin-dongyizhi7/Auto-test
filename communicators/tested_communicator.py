@@ -1,3 +1,11 @@
+'''
+Author: 凛冬已至 2985956026@qq.com
+Date: 2025-07-24 13:25:17
+LastEditors: 凛冬已至 2985956026@qq.com
+LastEditTime: 2025-09-02 12:39:14
+FilePath: \Auto-test\communicators\tested_communicator.py
+Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
+'''
 import socket
 import json
 import time
@@ -8,6 +16,9 @@ import dogtail.tree
 import pyautogui
 import threading
 import queue
+import os
+import sys
+import argparse
 from typing import Dict, List, Optional, Set
 from collections import OrderedDict
 
@@ -97,6 +108,10 @@ class TestedMachineCommunicator:
         # 线程管理
         self.server_thread = None
         self.client_threads: Set[threading.Thread] = set()
+        
+        # 常用组件预加载
+        self.common_components: Dict[str, Dict] = {}  # app_name -> components
+        self.preload_enabled = False
 
     def _get_app_region(self, app_name: str) -> Optional[List[int]]:
         """获取指定应用的窗口信息（位置和大小）"""
@@ -596,6 +611,172 @@ class TestedMachineCommunicator:
             print(f"注册应用 {app_name} 失败: {str(e)}")
             return False
 
+    def load_common_components(self, config_file_path: str) -> bool:
+        """
+        从JSON配置文件加载常用组件定义
+        :param config_file_path: 配置文件路径
+        :return: 是否加载成功
+        """
+        try:
+            if not os.path.exists(config_file_path):
+                print(f"配置文件不存在: {config_file_path}")
+                return False
+            
+            with open(config_file_path, 'r', encoding='utf-8') as f:
+                config_data = json.load(f)
+            
+            if 'components' not in config_data:
+                print("配置文件格式错误：缺少'components'字段")
+                return False
+            
+            self.common_components = config_data['components']
+            self.preload_enabled = True
+            
+            print(f"成功加载常用组件配置，包含 {len(self.common_components)} 个应用的组件定义")
+            for app_name, components in self.common_components.items():
+                element_count = len(components.get('elements', []))
+                print(f"  - {app_name}: {element_count} 个组件")
+            
+            return True
+            
+        except json.JSONDecodeError as e:
+            print(f"配置文件JSON格式错误: {str(e)}")
+            return False
+        except Exception as e:
+            print(f"加载常用组件配置失败: {str(e)}")
+            return False
+
+    def preload_components_for_app(self, app_name: str) -> Dict:
+        """
+        为指定应用预加载常用组件到缓存
+        :param app_name: 应用名称
+        :return: 预加载结果统计
+        """
+        if not self.preload_enabled or app_name not in self.common_components:
+            return {
+                "success": False,
+                "error": f"应用 {app_name} 没有预定义的常用组件"
+            }
+        
+        if app_name not in self.apps:
+            return {
+                "success": False,
+                "error": f"应用 {app_name} 未注册"
+            }
+        
+        components = self.common_components[app_name]
+        elements = components.get('elements', [])
+        
+        if not elements:
+            return {
+                "success": True,
+                "message": f"应用 {app_name} 没有需要预加载的组件",
+                "stats": {"total": 0, "success": 0, "failed": 0}
+            }
+        
+        print(f"开始为应用 {app_name} 预加载 {len(elements)} 个常用组件...")
+        
+        success_count = 0
+        failed_count = 0
+        failed_elements = []
+        
+        for element in elements:
+            try:
+                element_path = element['path']
+                role_name = element.get('role_name')
+                element_name = element.get('name', element_path)
+                
+                # 调用_get_element方法预加载组件到缓存
+                result = self._get_element(app_name, element_path, [role_name] if role_name else None)
+                
+                if result.get('success'):
+                    success_count += 1
+                    print(f"  ✅ 预加载成功: {element_name} ({element_path})")
+                else:
+                    failed_count += 1
+                    error_msg = result.get('error', '未知错误')
+                    failed_elements.append({
+                        'name': element_name,
+                        'path': element_path,
+                        'error': error_msg
+                    })
+                    print(f"  ❌ 预加载失败: {element_name} ({element_path}) - {error_msg}")
+                
+                # 添加短暂延迟，避免过快查询导致系统负载过高
+                time.sleep(0.1)
+                
+            except Exception as e:
+                failed_count += 1
+                failed_elements.append({
+                    'name': element.get('name', '未知'),
+                    'path': element.get('path', '未知'),
+                    'error': str(e)
+                })
+                print(f"  ❌ 预加载异常: {element.get('name', '未知')} - {str(e)}")
+        
+        result = {
+            "success": True,
+            "message": f"应用 {app_name} 组件预加载完成",
+            "stats": {
+                "total": len(elements),
+                "success": success_count,
+                "failed": failed_count
+            },
+            "failed_elements": failed_elements
+        }
+        
+        print(f"预加载完成: 总计 {len(elements)} 个，成功 {success_count} 个，失败 {failed_count} 个")
+        return result
+
+    def preload_all_components(self) -> Dict:
+        """
+        为所有已注册的应用预加载常用组件
+        :return: 预加载结果统计
+        """
+        if not self.preload_enabled:
+            return {
+                "success": False,
+                "error": "预加载功能未启用，请先加载配置文件"
+            }
+        
+        if not self.apps:
+            return {
+                "success": False,
+                "error": "没有已注册的应用"
+            }
+        
+        print("开始为所有已注册应用预加载常用组件...")
+        
+        total_stats = {"total": 0, "success": 0, "failed": 0}
+        app_results = {}
+        
+        for app_name in self.apps.keys():
+            if app_name in self.common_components:
+                result = self.preload_components_for_app(app_name)
+                app_results[app_name] = result
+                
+                if result.get('success'):
+                    stats = result.get('stats', {})
+                    total_stats['total'] += stats.get('total', 0)
+                    total_stats['success'] += stats.get('success', 0)
+                    total_stats['failed'] += stats.get('failed', 0)
+            else:
+                app_results[app_name] = {
+                    "success": True,
+                    "message": f"应用 {app_name} 没有预定义的常用组件",
+                    "stats": {"total": 0, "success": 0, "failed": 0}
+                }
+        
+        result = {
+            "success": True,
+            "message": "所有应用组件预加载完成",
+            "total_stats": total_stats,
+            "app_results": app_results
+        }
+        
+        print(f"全部预加载完成: 总计 {total_stats['total']} 个，成功 {total_stats['success']} 个，失败 {total_stats['failed']} 个")
+        return result
+
     def unregister_app(self, app_name: str) -> bool:
         """注销应用"""
         if app_name in self.apps:
@@ -849,3 +1030,356 @@ class TestedMachineCommunicator:
         
         print("通信服务已停止")
 
+
+def interactive_setup():
+    """交互式配置设置"""
+    print("=" * 60)
+    print("被测试机器通信服务 - 交互式配置")
+    print("=" * 60)
+    
+    # 获取监听端口
+    while True:
+        try:
+            port_input = input("请输入监听端口 (默认: 8888): ").strip()
+            if not port_input:
+                port = 8888
+            else:
+                port = int(port_input)
+                if 1 <= port <= 65535:
+                    break
+                else:
+                    print("❌ 端口号必须在 1-65535 范围内")
+        except ValueError:
+            print("❌ 请输入有效的端口号")
+    
+    # 获取机器ID
+    machine_id = input("请输入机器ID (默认: test_machine_001): ").strip()
+    if not machine_id:
+        machine_id = "test_machine_001"
+    
+    # 获取监控应用列表
+    print("\n可用的应用类型:")
+    print("1. calculator (计算器)")
+    print("2. gedit (文本编辑器)")
+    print("3. firefox (浏览器)")
+    print("4. terminal (终端)")
+    print("5. nautilus (文件管理器)")
+    
+    apps_input = input("请输入要监控的应用名称，用空格分隔 (默认: calculator gedit): ").strip()
+    if not apps_input:
+        apps = ["calculator", "gedit"]
+    else:
+        apps = [app.strip() for app in apps_input.split()]
+    
+    # 获取组件配置文件路径
+    print("\n可用的配置文件:")
+    print("1. common_components.json (中文版)")
+    print("2. common_components_en.json (英文版)")
+    
+    config_choice = input("请选择配置文件 (1/2，默认: 1): ").strip()
+    if config_choice == "2":
+        config_file = "common_components_en.json"
+    else:
+        config_file = "common_components.json"
+    
+    # 获取预加载设置
+    preload_input = input("是否启用常用组件预加载功能? (y/n，默认: y): ").strip().lower()
+    enable_preload = preload_input in ['', 'y', 'yes', '是']
+    
+    return {
+        'port': port,
+        'machine_id': machine_id,
+        'apps': apps,
+        'config_file': config_file,
+        'enable_preload': enable_preload
+    }
+
+def display_config(config):
+    """显示配置信息"""
+    print("\n" + "=" * 60)
+    print("配置确认")
+    print("=" * 60)
+    print(f"监听端口: {config['port']}")
+    print(f"机器ID: {config['machine_id']}")
+    print(f"监控应用: {', '.join(config['apps'])}")
+    print(f"组件配置文件: {config['config_file']}")
+    print(f"预加载功能: {'启用' if config['enable_preload'] else '禁用'}")
+    print("=" * 60)
+    
+    confirm = input("\n确认启动服务? (y/n，默认: y): ").strip().lower()
+    return confirm in ['', 'y', 'yes', '是']
+
+def interactive_menu(communicator):
+    """交互式菜单"""
+    while True:
+        print("\n" + "=" * 40)
+        print("服务管理菜单")
+        print("=" * 40)
+        print("1. 查看服务状态")
+        print("2. 查看已注册应用")
+        print("3. 手动注册应用")
+        print("4. 注销应用")
+        print("5. 预加载组件")
+        print("6. 查看缓存状态")
+        print("7. 重新加载配置文件")
+        print("8. 停止服务")
+        print("0. 退出菜单")
+        
+        choice = input("\n请选择操作 (0-8): ").strip()
+        
+        if choice == "1":
+            show_service_status(communicator)
+        elif choice == "2":
+            show_registered_apps(communicator)
+        elif choice == "3":
+            register_app_interactive(communicator)
+        elif choice == "4":
+            unregister_app_interactive(communicator)
+        elif choice == "5":
+            preload_components_interactive(communicator)
+        elif choice == "6":
+            show_cache_status(communicator)
+        elif choice == "7":
+            reload_config_interactive(communicator)
+        elif choice == "8":
+            print("正在停止服务...")
+            communicator.stop()
+            print("服务已停止")
+            break
+        elif choice == "0":
+            print("退出菜单，服务继续运行...")
+            break
+        else:
+            print("❌ 无效选择，请重新输入")
+
+def show_service_status(communicator):
+    """显示服务状态"""
+    print("\n" + "-" * 30)
+    print("服务状态")
+    print("-" * 30)
+    print(f"运行状态: {'运行中' if communicator.is_running else '已停止'}")
+    print(f"监听地址: {communicator.bind_host}:{communicator.bind_port}")
+    print(f"机器ID: {communicator.machine_id}")
+    print(f"预加载功能: {'启用' if communicator.preload_enabled else '禁用'}")
+    
+    # 测试服务器连接状态
+    server_status = communicator.get_test_server_status()
+    print(f"测试服务器连接: {'已连接' if server_status['connected'] else '未连接'}")
+
+def show_registered_apps(communicator):
+    """显示已注册应用"""
+    print("\n" + "-" * 30)
+    print("已注册应用")
+    print("-" * 30)
+    if not communicator.apps:
+        print("暂无已注册应用")
+    else:
+        for app_name, app_info in communicator.apps.items():
+            print(f"应用: {app_name}")
+            print(f"  状态: {app_info.get('status', '未知')}")
+            print(f"  注册时间: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(app_info.get('registered_at', 0)))}")
+            print()
+
+def register_app_interactive(communicator):
+    """交互式注册应用"""
+    app_name = input("请输入要注册的应用名称: ").strip()
+    if not app_name:
+        print("❌ 应用名称不能为空")
+        return
+    
+    if app_name in communicator.apps:
+        print(f"❌ 应用 {app_name} 已经注册")
+        return
+    
+    success = communicator.register_app(app_name)
+    if success:
+        print(f"✅ 应用 {app_name} 注册成功")
+    else:
+        print(f"❌ 应用 {app_name} 注册失败")
+
+def unregister_app_interactive(communicator):
+    """交互式注销应用"""
+    if not communicator.apps:
+        print("❌ 没有已注册的应用")
+        return
+    
+    print("已注册的应用:")
+    for i, app_name in enumerate(communicator.apps.keys(), 1):
+        print(f"{i}. {app_name}")
+    
+    try:
+        choice = int(input("请选择要注销的应用编号: ")) - 1
+        app_names = list(communicator.apps.keys())
+        if 0 <= choice < len(app_names):
+            app_name = app_names[choice]
+            success = communicator.unregister_app(app_name)
+            if success:
+                print(f"✅ 应用 {app_name} 注销成功")
+            else:
+                print(f"❌ 应用 {app_name} 注销失败")
+        else:
+            print("❌ 无效选择")
+    except ValueError:
+        print("❌ 请输入有效的数字")
+
+def preload_components_interactive(communicator):
+    """交互式预加载组件"""
+    if not communicator.preload_enabled:
+        print("❌ 预加载功能未启用")
+        return
+    
+    if not communicator.apps:
+        print("❌ 没有已注册的应用")
+        return
+    
+    print("选择预加载范围:")
+    print("1. 预加载所有应用")
+    print("2. 预加载指定应用")
+    
+    choice = input("请选择 (1/2): ").strip()
+    
+    if choice == "1":
+        print("开始预加载所有应用的组件...")
+        result = communicator.preload_all_components()
+    elif choice == "2":
+        print("已注册的应用:")
+        for i, app_name in enumerate(communicator.apps.keys(), 1):
+            print(f"{i}. {app_name}")
+        
+        try:
+            app_choice = int(input("请选择应用编号: ")) - 1
+            app_names = list(communicator.apps.keys())
+            if 0 <= app_choice < len(app_names):
+                app_name = app_names[app_choice]
+                print(f"开始预加载应用 {app_name} 的组件...")
+                result = communicator.preload_components_for_app(app_name)
+            else:
+                print("❌ 无效选择")
+                return
+        except ValueError:
+            print("❌ 请输入有效的数字")
+            return
+    else:
+        print("❌ 无效选择")
+        return
+    
+    # 显示结果
+    if result.get('success'):
+        stats = result.get('stats', result.get('total_stats', {}))
+        print(f"✅ 预加载完成: 总计 {stats.get('total', 0)} 个组件")
+        print(f"   成功: {stats.get('success', 0)} 个")
+        print(f"   失败: {stats.get('failed', 0)} 个")
+    else:
+        print(f"❌ 预加载失败: {result.get('error', '未知错误')}")
+
+def show_cache_status(communicator):
+    """显示缓存状态"""
+    print("\n" + "-" * 30)
+    print("缓存状态")
+    print("-" * 30)
+    if not communicator.element_caches:
+        print("暂无缓存数据")
+    else:
+        for app_name, cache in communicator.element_caches.items():
+            print(f"应用: {app_name}")
+            print(f"  缓存大小: {len(cache.cache)}/{cache.capacity}")
+            print(f"  缓存命中率: {getattr(cache, 'hit_rate', 'N/A')}")
+
+def reload_config_interactive(communicator):
+    """交互式重新加载配置"""
+    print("可用的配置文件:")
+    print("1. common_components.json (中文版)")
+    print("2. common_components_en.json (英文版)")
+    
+    choice = input("请选择配置文件 (1/2): ").strip()
+    if choice == "2":
+        config_file = "common_components_en.json"
+    else:
+        config_file = "common_components.json"
+    
+    # 构建完整路径
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    config_path = os.path.join(script_dir, config_file)
+    
+    print(f"正在重新加载配置文件: {config_path}")
+    success = communicator.load_common_components(config_path)
+    
+    if success:
+        print("✅ 配置文件重新加载成功")
+    else:
+        print("❌ 配置文件重新加载失败")
+
+def main():
+    """主函数，交互式启动服务"""
+    # 交互式配置
+    config = interactive_setup()
+    
+    # 确认配置
+    if not display_config(config):
+        print("配置已取消，退出程序")
+        return
+    
+    # 初始化服务
+    communicator = TestedMachineCommunicator(
+        bind_port=config['port'],
+        machine_id=config['machine_id']
+    )
+    
+    try:
+        # 加载配置文件
+        if config['enable_preload']:
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            config_path = os.path.join(script_dir, config['config_file'])
+            
+            print(f"\n正在加载常用组件配置文件: {config_path}")
+            if communicator.load_common_components(config_path):
+                print("✅ 常用组件配置文件加载成功")
+            else:
+                print("❌ 常用组件配置文件加载失败，将禁用预加载功能")
+                config['enable_preload'] = False
+        
+        # 启动服务
+        print(f"\n正在启动服务，监控应用: {', '.join(config['apps'])}")
+        communicator.start(app_names=config['apps'])
+        
+        # 预加载组件
+        if config['enable_preload']:
+            print("\n开始预加载常用组件...")
+            preload_result = communicator.preload_all_components()
+            
+            if preload_result.get('success'):
+                stats = preload_result.get('total_stats', {})
+                print(f"✅ 预加载完成: 总计 {stats.get('total', 0)} 个组件")
+                print(f"   成功: {stats.get('success', 0)} 个")
+                print(f"   失败: {stats.get('failed', 0)} 个")
+            else:
+                print(f"❌ 预加载失败: {preload_result.get('error', '未知错误')}")
+        
+        print("\n" + "=" * 60)
+        print("服务已启动，等待连接...")
+        print("输入 'menu' 进入管理菜单，按 Ctrl+C 停止服务")
+        print("=" * 60)
+        
+        # 交互式运行
+        import threading
+        
+        # 启动菜单线程
+        menu_thread = threading.Thread(target=interactive_menu, args=(communicator,), daemon=True)
+        menu_thread.start()
+        
+        # 保持服务运行
+        while communicator.is_running:
+            try:
+                time.sleep(1)
+            except KeyboardInterrupt:
+                break
+            
+    except KeyboardInterrupt:
+        pass
+    finally:
+        print("\n收到停止信号，正在关闭服务...")
+        communicator.stop()
+        print("服务已停止")
+
+if __name__ == "__main__":
+    main()

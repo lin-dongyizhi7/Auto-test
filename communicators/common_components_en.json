@@ -1,0 +1,385 @@
+{
+  "description": "Common Components Preload Configuration File",
+  "version": "1.0.0",
+  "components": {
+    "calculator": {
+      "description": "Calculator application common components",
+      "elements": [
+        {
+          "name": "Number 0",
+          "path": "0",
+          "role_name": "push button",
+          "description": "Number 0 button"
+        },
+        {
+          "name": "Number 1",
+          "path": "1", 
+          "role_name": "push button",
+          "description": "Number 1 button"
+        },
+        {
+          "name": "Number 2",
+          "path": "2",
+          "role_name": "push button", 
+          "description": "Number 2 button"
+        },
+        {
+          "name": "Number 3",
+          "path": "3",
+          "role_name": "push button",
+          "description": "Number 3 button"
+        },
+        {
+          "name": "Number 4",
+          "path": "4",
+          "role_name": "push button",
+          "description": "Number 4 button"
+        },
+        {
+          "name": "Number 5",
+          "path": "5",
+          "role_name": "push button",
+          "description": "Number 5 button"
+        },
+        {
+          "name": "Number 6",
+          "path": "6",
+          "role_name": "push button",
+          "description": "Number 6 button"
+        },
+        {
+          "name": "Number 7",
+          "path": "7",
+          "role_name": "push button",
+          "description": "Number 7 button"
+        },
+        {
+          "name": "Number 8",
+          "path": "8",
+          "role_name": "push button",
+          "description": "Number 8 button"
+        },
+        {
+          "name": "Number 9",
+          "path": "9",
+          "role_name": "push button",
+          "description": "Number 9 button"
+        },
+        {
+          "name": "Plus",
+          "path": "+",
+          "role_name": "push button",
+          "description": "Addition button"
+        },
+        {
+          "name": "Minus",
+          "path": "-",
+          "role_name": "push button",
+          "description": "Subtraction button"
+        },
+        {
+          "name": "Multiply",
+          "path": "×",
+          "role_name": "push button",
+          "description": "Multiplication button"
+        },
+        {
+          "name": "Divide",
+          "path": "÷",
+          "role_name": "push button",
+          "description": "Division button"
+        },
+        {
+          "name": "Equals",
+          "path": "=",
+          "role_name": "push button",
+          "description": "Equals button"
+        },
+        {
+          "name": "Clear",
+          "path": "Clear",
+          "role_name": "push button",
+          "description": "Clear button"
+        },
+        {
+          "name": "Display",
+          "path": "Display",
+          "role_name": "text",
+          "description": "Calculation result display area"
+        }
+      ]
+    },
+    "gedit": {
+      "description": "Text editor common components",
+      "elements": [
+        {
+          "name": "File Menu",
+          "path": "Menu Bar/File",
+          "role_name": "menu",
+          "description": "File menu"
+        },
+        {
+          "name": "Edit Menu",
+          "path": "Menu Bar/Edit",
+          "role_name": "menu",
+          "description": "Edit menu"
+        },
+        {
+          "name": "View Menu",
+          "path": "Menu Bar/View",
+          "role_name": "menu",
+          "description": "View menu"
+        },
+        {
+          "name": "New File",
+          "path": "Menu Bar/File/New",
+          "role_name": "menu item",
+          "description": "New file menu item"
+        },
+        {
+          "name": "Open File",
+          "path": "Menu Bar/File/Open",
+          "role_name": "menu item",
+          "description": "Open file menu item"
+        },
+        {
+          "name": "Save File",
+          "path": "Menu Bar/File/Save",
+          "role_name": "menu item",
+          "description": "Save file menu item"
+        },
+        {
+          "name": "Save As",
+          "path": "Menu Bar/File/Save As",
+          "role_name": "menu item",
+          "description": "Save as menu item"
+        },
+        {
+          "name": "Undo",
+          "path": "Menu Bar/Edit/Undo",
+          "role_name": "menu item",
+          "description": "Undo operation menu item"
+        },
+        {
+          "name": "Redo",
+          "path": "Menu Bar/Edit/Redo",
+          "role_name": "menu item",
+          "description": "Redo operation menu item"
+        },
+        {
+          "name": "Copy",
+          "path": "Menu Bar/Edit/Copy",
+          "role_name": "menu item",
+          "description": "Copy menu item"
+        },
+        {
+          "name": "Paste",
+          "path": "Menu Bar/Edit/Paste",
+          "role_name": "menu item",
+          "description": "Paste menu item"
+        },
+        {
+          "name": "Find",
+          "path": "Menu Bar/Search/Find",
+          "role_name": "menu item",
+          "description": "Find menu item"
+        },
+        {
+          "name": "Replace",
+          "path": "Menu Bar/Search/Replace",
+          "role_name": "menu item",
+          "description": "Replace menu item"
+        },
+        {
+          "name": "Text Edit Area",
+          "path": "Text Edit Area",
+          "role_name": "text",
+          "description": "Main text editing area"
+        },
+        {
+          "name": "Status Bar",
+          "path": "Status Bar",
+          "role_name": "status bar",
+          "description": "Status bar"
+        }
+      ]
+    },
+    "firefox": {
+      "description": "Firefox browser common components",
+      "elements": [
+        {
+          "name": "Address Bar",
+          "path": "Address Bar",
+          "role_name": "text",
+          "description": "URL address input bar"
+        },
+        {
+          "name": "Forward Button",
+          "path": "Forward",
+          "role_name": "push button",
+          "description": "Forward button"
+        },
+        {
+          "name": "Back Button",
+          "path": "Back",
+          "role_name": "push button",
+          "description": "Back button"
+        },
+        {
+          "name": "Refresh Button",
+          "path": "Refresh",
+          "role_name": "push button",
+          "description": "Refresh button"
+        },
+        {
+          "name": "Home Button",
+          "path": "Home",
+          "role_name": "push button",
+          "description": "Home button"
+        },
+        {
+          "name": "Bookmark Button",
+          "path": "Bookmark",
+          "role_name": "push button",
+          "description": "Bookmark button"
+        },
+        {
+          "name": "Menu Button",
+          "path": "Menu",
+          "role_name": "push button",
+          "description": "Main menu button"
+        },
+        {
+          "name": "New Tab",
+          "path": "New Tab",
+          "role_name": "push button",
+          "description": "New tab button"
+        },
+        {
+          "name": "Close Tab",
+          "path": "Close Tab",
+          "role_name": "push button",
+          "description": "Close current tab button"
+        }
+      ]
+    },
+    "terminal": {
+      "description": "Terminal application common components",
+      "elements": [
+        {
+          "name": "Terminal Window",
+          "path": "Terminal Window",
+          "role_name": "terminal",
+          "description": "Main terminal window"
+        },
+        {
+          "name": "Command Line",
+          "path": "Command Line",
+          "role_name": "text",
+          "description": "Command input line"
+        },
+        {
+          "name": "Menu Bar",
+          "path": "Menu Bar",
+          "role_name": "menu bar",
+          "description": "Terminal menu bar"
+        },
+        {
+          "name": "File Menu",
+          "path": "Menu Bar/File",
+          "role_name": "menu",
+          "description": "File menu"
+        },
+        {
+          "name": "Edit Menu",
+          "path": "Menu Bar/Edit",
+          "role_name": "menu",
+          "description": "Edit menu"
+        },
+        {
+          "name": "View Menu",
+          "path": "Menu Bar/View",
+          "role_name": "menu",
+          "description": "View menu"
+        },
+        {
+          "name": "Terminal Menu",
+          "path": "Menu Bar/Terminal",
+          "role_name": "menu",
+          "description": "Terminal specific menu"
+        },
+        {
+          "name": "Help Menu",
+          "path": "Menu Bar/Help",
+          "role_name": "menu",
+          "description": "Help menu"
+        }
+      ]
+    },
+    "nautilus": {
+      "description": "File manager common components",
+      "elements": [
+        {
+          "name": "File Menu",
+          "path": "Menu Bar/File",
+          "role_name": "menu",
+          "description": "File menu"
+        },
+        {
+          "name": "Edit Menu",
+          "path": "Menu Bar/Edit",
+          "role_name": "menu",
+          "description": "Edit menu"
+        },
+        {
+          "name": "View Menu",
+          "path": "Menu Bar/View",
+          "role_name": "menu",
+          "description": "View menu"
+        },
+        {
+          "name": "Go Menu",
+          "path": "Menu Bar/Go",
+          "role_name": "menu",
+          "description": "Go menu"
+        },
+        {
+          "name": "Bookmarks Menu",
+          "path": "Menu Bar/Bookmarks",
+          "role_name": "menu",
+          "description": "Bookmarks menu"
+        },
+        {
+          "name": "Help Menu",
+          "path": "Menu Bar/Help",
+          "role_name": "menu",
+          "description": "Help menu"
+        },
+        {
+          "name": "Address Bar",
+          "path": "Address Bar",
+          "role_name": "text",
+          "description": "Current path address bar"
+        },
+        {
+          "name": "Search Box",
+          "path": "Search Box",
+          "role_name": "text",
+          "description": "File search box"
+        },
+        {
+          "name": "File List",
+          "path": "File List",
+          "role_name": "table",
+          "description": "File and folder list"
+        },
+        {
+          "name": "Sidebar",
+          "path": "Sidebar",
+          "role_name": "panel",
+          "description": "Navigation sidebar"
+        }
+      ]
+    }
+  }
+}

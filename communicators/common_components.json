@@ -1,0 +1,267 @@
+{
+  "description": "常用组件预加载配置文件",
+  "version": "1.0.0",
+  "components": {
+    "calculator": {
+      "description": "计算器应用常用组件",
+      "elements": [
+        {
+          "name": "数字0",
+          "path": "0",
+          "role_name": "push button",
+          "description": "数字0按钮"
+        },
+        {
+          "name": "数字1",
+          "path": "1", 
+          "role_name": "push button",
+          "description": "数字1按钮"
+        },
+        {
+          "name": "数字2",
+          "path": "2",
+          "role_name": "push button", 
+          "description": "数字2按钮"
+        },
+        {
+          "name": "数字3",
+          "path": "3",
+          "role_name": "push button",
+          "description": "数字3按钮"
+        },
+        {
+          "name": "数字4",
+          "path": "4",
+          "role_name": "push button",
+          "description": "数字4按钮"
+        },
+        {
+          "name": "数字5",
+          "path": "5",
+          "role_name": "push button",
+          "description": "数字5按钮"
+        },
+        {
+          "name": "数字6",
+          "path": "6",
+          "role_name": "push button",
+          "description": "数字6按钮"
+        },
+        {
+          "name": "数字7",
+          "path": "7",
+          "role_name": "push button",
+          "description": "数字7按钮"
+        },
+        {
+          "name": "数字8",
+          "path": "8",
+          "role_name": "push button",
+          "description": "数字8按钮"
+        },
+        {
+          "name": "数字9",
+          "path": "9",
+          "role_name": "push button",
+          "description": "数字9按钮"
+        },
+        {
+          "name": "加号",
+          "path": "+",
+          "role_name": "push button",
+          "description": "加法按钮"
+        },
+        {
+          "name": "减号",
+          "path": "-",
+          "role_name": "push button",
+          "description": "减法按钮"
+        },
+        {
+          "name": "乘号",
+          "path": "×",
+          "role_name": "push button",
+          "description": "乘法按钮"
+        },
+        {
+          "name": "除号",
+          "path": "÷",
+          "role_name": "push button",
+          "description": "除法按钮"
+        },
+        {
+          "name": "等号",
+          "path": "=",
+          "role_name": "push button",
+          "description": "等号按钮"
+        },
+        {
+          "name": "清除",
+          "path": "Clear",
+          "role_name": "push button",
+          "description": "清除按钮"
+        },
+        {
+          "name": "显示区域",
+          "path": "Display",
+          "role_name": "text",
+          "description": "计算结果显示区域"
+        }
+      ]
+    },
+    "gedit": {
+      "description": "文本编辑器常用组件",
+      "elements": [
+        {
+          "name": "文件菜单",
+          "path": "菜单栏/文件",
+          "role_name": "menu",
+          "description": "文件菜单"
+        },
+        {
+          "name": "编辑菜单",
+          "path": "菜单栏/编辑",
+          "role_name": "menu",
+          "description": "编辑菜单"
+        },
+        {
+          "name": "查看菜单",
+          "path": "菜单栏/查看",
+          "role_name": "menu",
+          "description": "查看菜单"
+        },
+        {
+          "name": "新建文件",
+          "path": "菜单栏/文件/新建",
+          "role_name": "menu item",
+          "description": "新建文件菜单项"
+        },
+        {
+          "name": "打开文件",
+          "path": "菜单栏/文件/打开",
+          "role_name": "menu item",
+          "description": "打开文件菜单项"
+        },
+        {
+          "name": "保存文件",
+          "path": "菜单栏/文件/保存",
+          "role_name": "menu item",
+          "description": "保存文件菜单项"
+        },
+        {
+          "name": "另存为",
+          "path": "菜单栏/文件/另存为",
+          "role_name": "menu item",
+          "description": "另存为菜单项"
+        },
+        {
+          "name": "撤销",
+          "path": "菜单栏/编辑/撤销",
+          "role_name": "menu item",
+          "description": "撤销操作菜单项"
+        },
+        {
+          "name": "重做",
+          "path": "菜单栏/编辑/重做",
+          "role_name": "menu item",
+          "description": "重做操作菜单项"
+        },
+        {
+          "name": "复制",
+          "path": "菜单栏/编辑/复制",
+          "role_name": "menu item",
+          "description": "复制菜单项"
+        },
+        {
+          "name": "粘贴",
+          "path": "菜单栏/编辑/粘贴",
+          "role_name": "menu item",
+          "description": "粘贴菜单项"
+        },
+        {
+          "name": "查找",
+          "path": "菜单栏/搜索/查找",
+          "role_name": "menu item",
+          "description": "查找菜单项"
+        },
+        {
+          "name": "替换",
+          "path": "菜单栏/搜索/替换",
+          "role_name": "menu item",
+          "description": "替换菜单项"
+        },
+        {
+          "name": "文本编辑区域",
+          "path": "文本编辑区域",
+          "role_name": "text",
+          "description": "主文本编辑区域"
+        },
+        {
+          "name": "状态栏",
+          "path": "状态栏",
+          "role_name": "status bar",
+          "description": "状态栏"
+        }
+      ]
+    },
+    "firefox": {
+      "description": "Firefox浏览器常用组件",
+      "elements": [
+        {
+          "name": "地址栏",
+          "path": "地址栏",
+          "role_name": "text",
+          "description": "URL地址输入栏"
+        },
+        {
+          "name": "前进按钮",
+          "path": "前进",
+          "role_name": "push button",
+          "description": "前进按钮"
+        },
+        {
+          "name": "后退按钮",
+          "path": "后退",
+          "role_name": "push button",
+          "description": "后退按钮"
+        },
+        {
+          "name": "刷新按钮",
+          "path": "刷新",
+          "role_name": "push button",
+          "description": "刷新按钮"
+        },
+        {
+          "name": "主页按钮",
+          "path": "主页",
+          "role_name": "push button",
+          "description": "主页按钮"
+        },
+        {
+          "name": "书签按钮",
+          "path": "书签",
+          "role_name": "push button",
+          "description": "书签按钮"
+        },
+        {
+          "name": "菜单按钮",
+          "path": "菜单",
+          "role_name": "push button",
+          "description": "主菜单按钮"
+        },
+        {
+          "name": "新标签页",
+          "path": "新标签页",
+          "role_name": "push button",
+          "description": "新标签页按钮"
+        },
+        {
+          "name": "关闭标签页",
+          "path": "关闭标签页",
+          "role_name": "push button",
+          "description": "关闭当前标签页按钮"
+        }
+      ]
+    }
+  }
+}
