@@ -2,7 +2,7 @@
 Author: 凛冬已至 2985956026@qq.com
 Date: 2025-07-24 13:25:17
 LastEditors: 凛冬已至 2985956026@qq.com
-LastEditTime: 2025-09-02 12:39:14
+LastEditTime: 2025-09-03 07:10:08
 FilePath: \Auto-test\communicators\tested_communicator.py
 Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
 '''
@@ -96,6 +96,7 @@ class TestedMachineCommunicator:
         
         # 测试服务器连接（被动模式）
         self.test_server_socket = None
+        self.test_server_addr = None
         self.test_server_connected = False
         self.test_server_thread = None
         self.test_server_send_lock = threading.Lock()
@@ -107,7 +108,6 @@ class TestedMachineCommunicator:
         
         # 线程管理
         self.server_thread = None
-        self.client_threads: Set[threading.Thread] = set()
         
         # 常用组件预加载
         self.common_components: Dict[str, Dict] = {}  # app_name -> components
@@ -387,23 +387,23 @@ class TestedMachineCommunicator:
             "results": results
         }
 
-    def _handle_test_server_connection(self, client_socket: socket.socket, client_addr: tuple) -> bool:
+    def _handle_test_server_connection(self, test_server_socket: socket.socket, test_server_addr: tuple) -> bool:
         """
         处理测试服务器的连接请求，验证IP和端口
-        :param client_socket: 客户端socket
-        :param client_addr: 客户端地址 (ip, port)
+        :param test_server_socket: 客户端socket
+        :param test_server_addr: 客户端地址 (ip, port)
         :return: 是否接受连接
         """
         try:
             # 接收连接验证请求
-            request_data = client_socket.recv(1024).decode('utf-8')
-            self._emit_event("incoming_connection", {"from": str(client_addr), "raw": request_data})
+            request_data = test_server_socket.recv(1024).decode('utf-8')
+            self._emit_event("incoming_connection", {"from": str(test_server_addr), "raw": request_data})
             if not request_data:
                 return False
             
             request = json.loads(request_data)
             if request.get("type") != "connection_request":
-                print(f"收到来自 {client_addr} 的无效连接请求类型: {request.get('type')}")
+                print(f"收到来自 {test_server_addr} 的无效连接请求类型: {request.get('type')}")
                 return False
             
             # 验证连接信息
@@ -418,21 +418,21 @@ class TestedMachineCommunicator:
             # 验证IP地址（允许本地连接和指定IP）
             allowed_hosts = ["127.0.0.1", "localhost", "0.0.0.0"]
             if server_host not in allowed_hosts and not server_host.startswith("192.168."):
-                print(f"拒绝来自 {client_addr} 的连接，IP地址 {server_host} 不在允许列表中")
+                print(f"拒绝来自 {test_server_addr} 的连接，IP地址 {server_host} 不在允许列表中")
                 return False
             
             # 验证端口（通常测试服务器使用8888端口）
             if server_port != 8888:
-                print(f"拒绝来自 {client_addr} 的连接，端口 {server_port} 不在允许列表中")
+                print(f"拒绝来自 {test_server_addr} 的连接，端口 {server_port} 不在允许列表中")
                 return False
             
-            print(f"验证通过，接受来自测试服务器 {client_addr} 的连接")
+            print(f"验证通过，接受来自测试服务器 {test_server_addr} 的连接")
             
             # 存储连接信息
             self.test_server_connection_info = {
                 "host": server_host,
                 "port": server_port,
-                "client_addr": client_addr
+                "test_server_addr": test_server_addr
             }
             
             # 发送连接确认
@@ -449,15 +449,16 @@ class TestedMachineCommunicator:
                     }
                 }
             }
-            client_socket.sendall(json.dumps(response).encode('utf-8'))
-            self._emit_event("test_server_connected", {"client_addr": str(client_addr), "server_host": server_host, "server_port": server_port})
+            test_server_socket.sendall(json.dumps(response).encode('utf-8'))
+            self._emit_event("test_server_connected", {"test_server_addr": str(test_server_addr), "server_host": server_host, "server_port": server_port})
             
             # 设置测试服务器连接
-            self.test_server_socket = client_socket
+            self.test_server_socket = test_server_socket
+            self.test_server_addr = test_server_addr
             self.test_server_connected = True
             
             # 启动测试服务器通信线程
-            self.test_server_thread = threading.Thread(target=self._test_server_communication, daemon=True)
+            self.test_server_thread = threading.Thread(target=self._handle_regular_request, daemon=True)
             self.test_server_thread.start()
             
             # 将已注册的应用同步到测试服务器
@@ -472,45 +473,6 @@ class TestedMachineCommunicator:
         except Exception as e:
             print(f"处理测试服务器连接请求失败: {str(e)}")
             return False
-
-    def _test_server_communication(self) -> None:
-        """与测试服务器的通信线程"""
-        while self.test_server_connected and self.is_running:
-            try:
-                # 接收来自测试服务器的请求
-                data = self.test_server_socket.recv(1024 * 1024).decode('utf-8')
-                if data:
-                    try:
-                        msg = json.loads(data)
-                        self._emit_event("server_request", {"type": msg.get("type"), "size": len(data)})
-                    except Exception:
-                        self._emit_event("server_request", {"type": "raw", "size": len(data)})
-                if not data:
-                    break
-                
-                request = json.loads(data)
-                # 仅处理服务端发起的请求类型，忽略我们主动上报后的响应包
-                if request.get("type") in {"get_screenshot", "get_element", "exec_commands"}:
-                    response = self._handle_test_server_request(request)
-                    self._emit_event("server_response", {"type": request.get("type"), "ok": bool(response.get("success"))})
-                    # 发送响应
-                    with self.test_server_send_lock:
-                        self.test_server_socket.sendall(json.dumps(response).encode('utf-8'))
-                else:
-                    # 忽略非请求类消息（如对sync_event/register_app的响应）
-                    continue
-                
-            except json.JSONDecodeError:
-                error_msg = {"success": False, "error": "无效的JSON格式"}
-                self.test_server_socket.sendall(json.dumps(error_msg).encode('utf-8'))
-                self._emit_event("server_response", {"type": "error", "error": "JSONDecodeError"})
-            except Exception as e:
-                print(f"与测试服务器通信时发生错误: {str(e)}")
-                self._emit_event("server_error", {"error": str(e)})
-                break
-        
-        self.test_server_connected = False
-        print("与测试服务器的连接已断开")
 
     def _register_app_to_server(self, app_name: str, app_info: Dict) -> None:
         """将应用注册到测试服务器（使用现有长连接，忽略响应）"""
@@ -528,26 +490,6 @@ class TestedMachineCommunicator:
                 self.test_server_socket.sendall(json.dumps(payload).encode('utf-8'))
         except Exception as e:
             print(f"向测试服务器注册应用失败: {str(e)}")
-
-    def _handle_test_server_request(self, request: Dict) -> Dict:
-        """处理来自测试服务器的请求"""
-        request_type = request.get("type")
-        
-        if request_type == "get_screenshot":
-            app_name = request.get("data", {}).get("app_name")
-            region = request.get("data", {}).get("region")
-            return self._handle_screenshot_request(app_name, region)
-        elif request_type == "get_element":
-            app_name = request.get("data", {}).get("app_name")
-            element_path = request.get("data", {}).get("element_path")
-            role_name_list = request.get("data", {}).get("role_name_list")
-            return self._handle_element_request(app_name, element_path, role_name_list)
-        elif request_type == "exec_commands":
-            app_name = request.get("data", {}).get("app_name")
-            commands = request.get("data", {}).get("commands")
-            return self._handle_command_request(app_name, commands)
-        else:
-            return {"success": False, "error": f"未知请求类型: {request_type}"}
 
     def _handle_screenshot_request(self, app_name: str, region: Optional[List[int]] = None) -> Dict:
         """处理截图请求"""
@@ -883,99 +825,62 @@ class TestedMachineCommunicator:
             # 不再主动连接测试服务器，等待测试服务器主动连接
             print("等待测试服务器主动连接...")
 
-            # 循环处理客户端连接
+            # 循环处理连接
             while self.is_running:
-                client_socket, client_addr = self.server_socket.accept()
-                print(f"收到来自 {client_addr} 的连接，保持长连接")
+                test_server_socket, test_server_addr = self.server_socket.accept()
+                print(f"收到来自 {test_server_addr} 的连接")
+                # 仅处理测试服务器连接，其他直接关闭
+                if self.test_server_connected:
+                    print(f"已存在测试服务器连接，拒绝新的连接 {test_server_addr}")
+                    try:
+                        test_server_socket.close()
+                    except Exception:
+                        pass
+                    continue
 
-                # 为每个客户端创建处理线程
-                client_thread = threading.Thread(
-                    target=self._handle_client_connection,
-                    args=(client_socket, client_addr),
-                    daemon=True
-                )
-                client_thread.start()
-                self.client_threads.add(client_thread)
+                if not self._is_test_server_connection_request(test_server_addr):
+                    print(f"来源 {test_server_addr} 不在允许范围（本机或 192.168.*.*），已拒绝")
+                    try:
+                        test_server_socket.close()
+                    except Exception:
+                        pass
+                    continue
+
+                if not self._handle_test_server_connection(test_server_socket, test_server_addr):
+                    try:
+                        test_server_socket.close()
+                    except Exception:
+                        pass
+                    continue
+                # 连接成功后，由测试服务器通信线程接管保持长连
 
         except Exception as e:
             print(f"服务启动失败: {str(e)}")
             self.stop()
 
-    def _handle_client_connection(self, client_socket: socket.socket, client_addr: tuple) -> None:
-        """处理客户端连接"""
+    def _is_test_server_connection_request(self, test_server_addr: tuple) -> bool:
+        """判断该来源是否属于测试服务器范围（用于握手触发）"""
         try:
-            # 首先检查是否是测试服务器的连接请求
-            if self._is_test_server_connection_request(client_addr):
-                if self._handle_test_server_connection(client_socket, client_addr):
-                    # 测试服务器连接成功，保持连接
-                    self._maintain_test_server_connection(client_socket, client_addr)
-                else:
-                    # 测试服务器连接失败，关闭连接
-                    client_socket.close()
-                return
-            
-            # 处理普通客户端连接
-            self._handle_regular_client_connection(client_socket, client_addr)
+            client_ip = test_server_addr[0]
+            allowed_hosts = ["127.0.0.1", "localhost", "0.0.0.0"]
+            return client_ip in allowed_hosts or client_ip.startswith("192.168.")
+        except Exception:
+            return False
 
-        except Exception as e:
-            print(f"处理客户端连接失败: {str(e)}")
-            client_socket.close()
-
-    def _is_test_server_connection_request(self, client_addr: tuple) -> bool:
-        """判断是否是测试服务器的连接请求"""
-        # 检查IP地址是否在允许的测试服务器范围内
-        client_ip = client_addr[0]
-        allowed_hosts = ["127.0.0.1", "localhost", "0.0.0.0"]
-        return client_ip in allowed_hosts or client_ip.startswith("192.168.")
-
-    def _maintain_test_server_connection(self, client_socket: socket.socket, client_addr: tuple) -> None:
-        """维护与测试服务器的连接"""
-        try:
-            while self.test_server_connected and self.is_running:
-                # 接收来自测试服务器的请求
-                request_data = client_socket.recv(1024 * 1024).decode('utf-8')
-                if request_data:
-                    try:
-                        msg = json.loads(request_data)
-                        self._emit_event("server_request", {"type": msg.get("type"), "size": len(request_data)})
-                    except Exception:
-                        self._emit_event("server_request", {"type": "raw", "size": len(request_data)})
-                if not request_data:
-                    print(f"测试服务器 {client_addr} 主动断开连接")
-                    break
-
-                request = json.loads(request_data)
-                response = self._handle_test_server_request(request)
-                self._emit_event("server_response", {"type": request.get("type"), "ok": bool(response.get("success"))})
-                
-                # 发送响应
-                with self.test_server_send_lock:
-                    client_socket.sendall(json.dumps(response).encode('utf-8'))
-
-        except Exception as e:
-            print(f"与测试服务器 {client_addr} 通信时发生错误: {str(e)}")
-            self._emit_event("server_error", {"client_addr": str(client_addr), "error": str(e)})
-        finally:
-            self.test_server_connected = False
-            if self.test_server_socket == client_socket:
-                self.test_server_socket = None
-            print(f"与测试服务器 {client_addr} 的连接已断开")
-            self._emit_event("test_server_disconnected", {"client_addr": str(client_addr)})
-
-    def _handle_regular_client_connection(self, client_socket: socket.socket, client_addr: tuple) -> None:
-        """处理普通客户端连接"""
+    def _handle_regular_request(self) -> None:
+        """处理普通请求"""
         try:
             # 保持连接，循环处理请求
-            while self.is_running:
+            while self.test_server_connected and self.is_running:
                 # 接收请求数据（最大1MB）
-                request_data = client_socket.recv(1024 * 1024).decode('utf-8')
+                request_data = self.test_server_socket.recv(1024 * 1024).decode('utf-8')
                 if not request_data:
-                    print(f"客户端 {client_addr} 主动断开连接")
+                    print(f" {self.test_server_addr} 断开连接")
                     break
 
                 # 解析请求（JSON格式）
                 request = json.loads(request_data)
-                self._emit_event("client_request", {"from": str(client_addr), "type": request.get("type")})
+                self._emit_event("client_request", {"from": str(self.test_server_addr), "type": request.get("type")})
                 response = {"success": False, "error": "未知请求类型"}
 
                 # 处理不同类型的请求
@@ -1026,27 +931,27 @@ class TestedMachineCommunicator:
 
                 elif request["type"] == "disconnect":
                     # 处理主动断开连接请求
-                    print(f"收到 {client_addr} 的断开连接请求")
+                    print(f"收到 {self.test_server_addr} 的断开连接请求")
                     response = {"success": True, "message": "连接已断开"}
-                    client_socket.sendall(json.dumps(response).encode('utf-8'))
+                    self.test_server_socket.sendall(json.dumps(response).encode('utf-8'))
                     break
 
                 # 发送响应
-                client_socket.sendall(json.dumps(response).encode('utf-8'))
-                self._emit_event("client_response", {"from": str(client_addr), "ok": bool(response.get("success"))})
+                self.test_server_socket.sendall(json.dumps(response).encode('utf-8'))
+                self._emit_event("client_response", {"from": str(self.test_server_addr), "ok": bool(response.get("success"))})
 
         except json.JSONDecodeError:
             error_msg = {"success": False, "error": "无效的JSON格式"}
-            client_socket.sendall(json.dumps(error_msg).encode('utf-8'))
-            self._emit_event("client_response", {"from": str(client_addr), "ok": False, "error": "JSONDecodeError"})
+            self.test_server_socket.sendall(json.dumps(error_msg).encode('utf-8'))
+            self._emit_event("client_response", {"from": str(self.test_server_addr), "ok": False, "error": "JSONDecodeError"})
         except Exception as e:
-            error_msg = {"success": False, "error": f"处理请求失败: {str(e)}"}
-            client_socket.sendall(json.dumps(error_msg).encode('utf-8'))
-            self._emit_event("client_response", {"from": str(client_addr), "ok": False, "error": str(e)})
+            print(f"与测试服务器 {self.test_server_addr} 通信时发生错误: {str(e)}")
+            self._emit_event("server_error", {"test_server_addr": str(self.test_server_addr), "error": str(e)})
         finally:
-            client_socket.close()
-            print(f"与 {client_addr} 的连接已关闭")
-            self._emit_event("client_disconnected", {"from": str(client_addr)})
+            self.test_server_connected = False
+            self.test_server_socket = None
+            print(f"与测试服务器 {self.test_server_addr} 的连接已断开")
+            self._emit_event("test_server_disconnected", {"test_server_addr": str(self.test_server_addr)})
 
     def get_test_server_status(self) -> Dict:
         """获取测试服务器连接状态"""
