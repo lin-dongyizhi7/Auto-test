@@ -6,7 +6,7 @@ import tkinter as tk
 from tkinter import ttk, scrolledtext, messagebox, filedialog
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
-from communicators.tested_communicator import TestedMachineCommunicator
+from .tested_communicator import TestedMachineCommunicator
 
 
 class AgentUI(tk.Tk):
