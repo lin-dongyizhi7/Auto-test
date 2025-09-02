@@ -42,15 +42,21 @@ class AgentUI(tk.Tk):
         self.mid_var = tk.StringVar(value="ui_machine_001")
         ttk.Entry(control_frame, textvariable=self.mid_var, width=20).grid(row=0, column=3, padx=4, pady=4)
 
-        ttk.Label(control_frame, text="Apps (space separated):").grid(row=0, column=4, padx=4, pady=4, sticky=tk.W)
+        ttk.Label(control_frame, text="Apps (space separated, empty=all):").grid(row=0, column=4, padx=4, pady=4, sticky=tk.W)
         self.apps_var = tk.StringVar(value="")
-        ttk.Entry(control_frame, textvariable=self.apps_var, width=28).grid(row=0, column=5, padx=4, pady=4)
+        apps_entry = ttk.Entry(control_frame, textvariable=self.apps_var, width=28)
+        apps_entry.grid(row=0, column=5, padx=4, pady=4)
+        self._create_tooltip(apps_entry, "Enter app names separated by spaces. Leave empty to monitor all available applications.")
+        
+        list_apps_btn = ttk.Button(control_frame, text="List Apps", command=self._list_available_apps)
+        list_apps_btn.grid(row=0, column=6, padx=4, pady=4)
+        self._create_tooltip(list_apps_btn, "Show currently available applications that can be monitored.")
 
         self.preload_var = tk.BooleanVar(value=True)
-        ttk.Checkbutton(control_frame, text="Preload Components", variable=self.preload_var).grid(row=0, column=6, padx=8)
+        ttk.Checkbutton(control_frame, text="Preload Components", variable=self.preload_var).grid(row=0, column=7, padx=8)
 
-        ttk.Button(control_frame, text="Start", command=self.start_agent).grid(row=0, column=7, padx=6)
-        ttk.Button(control_frame, text="Stop", command=self.stop_agent).grid(row=0, column=8, padx=6)
+        ttk.Button(control_frame, text="Start", command=self.start_agent).grid(row=0, column=8, padx=6)
+        ttk.Button(control_frame, text="Stop", command=self.stop_agent).grid(row=0, column=9, padx=6)
 
         cfg_frame = ttk.Frame(control_frame)
         cfg_frame.grid(row=1, column=0, columnspan=9, sticky=tk.W, padx=4, pady=4)
@@ -119,6 +125,8 @@ class AgentUI(tk.Tk):
 
         menu_view = tk.Menu(menubar, tearoff=0)
         menu_view.add_checkbutton(label="Word wrap", onvalue=True, offvalue=False, variable=self.wrap_var, command=self._toggle_wrap)
+        menu_view.add_separator()
+        menu_view.add_command(label="List Available Apps", command=self._list_available_apps)
         menubar.add_cascade(label="View", menu=menu_view)
 
         menu_help = tk.Menu(menubar, tearoff=0)
@@ -170,6 +178,27 @@ class AgentUI(tk.Tk):
 
         # Start agent in background
         apps = [x.strip() for x in self.apps_var.get().split() if x.strip()]
+        if not apps:
+            self._append_event_line({"type": "ui", "data": {"msg": "No apps specified, will monitor all available applications"}})
+            # List available apps when none specified
+            try:
+                import dogtail.tree
+                available_apps = []
+                root = dogtail.tree.root
+                for child in getattr(root, 'children', []) or []:
+                    name = getattr(child, 'name', None)
+                    if name:
+                        available_apps.append(name)
+                if available_apps:
+                    app_list = ", ".join(available_apps[:5])  # Show first 5 apps
+                    if len(available_apps) > 5:
+                        app_list += f" and {len(available_apps) - 5} more"
+                    self._append_event_line({"type": "ui", "data": {"msg": f"Available apps: {app_list}"}})
+                else:
+                    self._append_event_line({"type": "ui", "data": {"msg": "No available apps detected"}})
+            except Exception as e:
+                self._append_event_line({"type": "ui", "data": {"msg": f"Could not list available apps: {str(e)}"}})
+        
         t = threading.Thread(target=self.communicator.start, args=(apps,), daemon=True)
         t.start()
 
@@ -232,6 +261,50 @@ class AgentUI(tk.Tk):
             self.events_text.configure(wrap=(tk.WORD if self.wrap_var.get() else tk.NONE))
         except Exception:
             pass
+
+    def _create_tooltip(self, widget, text):
+        """为控件创建工具提示"""
+        def show_tooltip(event):
+            tooltip = tk.Toplevel()
+            tooltip.wm_overrideredirect(True)
+            tooltip.wm_geometry(f"+{event.x_root+10}+{event.y_root+10}")
+            label = tk.Label(tooltip, text=text, background="lightyellow", 
+                           relief="solid", borderwidth=1, font=("Arial", 9))
+            label.pack()
+            widget.tooltip = tooltip
+        
+        def hide_tooltip(event):
+            if hasattr(widget, 'tooltip'):
+                widget.tooltip.destroy()
+                del widget.tooltip
+        
+        widget.bind("<Enter>", show_tooltip)
+        widget.bind("<Leave>", hide_tooltip)
+
+    def _list_available_apps(self):
+        """列出当前可用的应用"""
+        try:
+            import dogtail.tree
+            apps = []
+            root = dogtail.tree.root
+            for child in getattr(root, 'children', []) or []:
+                name = getattr(child, 'name', None)
+                if name:
+                    apps.append(name)
+            
+            if apps:
+                app_list = "\n".join([f"{i+1}. {name}" for i, name in enumerate(apps)])
+                messagebox.showinfo("Available Apps", f"Current available applications:\n\n{app_list}")
+                self._append_event_line({"type": "ui", "data": {"msg": f"Found {len(apps)} available apps"}})
+            else:
+                messagebox.showwarning("No Apps", "No applications found. This might be due to:\n- Permission restrictions\n- No applications running\n- Environment limitations")
+                self._append_event_line({"type": "ui", "data": {"msg": "No available apps found"}})
+        except ImportError:
+            messagebox.showerror("Error", "dogtail library not available. Cannot list applications.")
+            self._append_event_line({"type": "ui", "data": {"msg": "dogtail not available for app listing"}})
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to list applications: {str(e)}")
+            self._append_event_line({"type": "ui", "data": {"msg": f"App listing failed: {str(e)}"}})
 
 
 if __name__ == "__main__":
