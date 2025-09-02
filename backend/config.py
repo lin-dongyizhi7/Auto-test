@@ -12,10 +12,10 @@ class Config:
     DEFAULT_PORT = int(os.getenv("TEST_SERVER_PORT", "8888"))
     DEFAULT_HOST = os.getenv("TEST_SERVER_HOST", "0.0.0.0")
     
-    # 脚本存储配置
+    # 脚本存储配置（新）
     SCRIPT_STORAGE_DIR = os.getenv("SCRIPT_STORAGE_DIR", os.path.dirname(__file__))
-    SCRIPT_STORAGE_FILE = os.path.join(SCRIPT_STORAGE_DIR, "scripts_storage.json")
-    SCRIPT_COUNTER_FILE = os.path.join(SCRIPT_STORAGE_DIR, "script_counter.json")
+    SCRIPTS_STORE_DIR = os.path.join(SCRIPT_STORAGE_DIR, "scripts_store")
+    SCRIPT_INFO_FILE = os.path.join(SCRIPT_STORAGE_DIR, "script_info.json")
     
     # 脚本执行配置
     SCRIPT_TIMEOUT = int(os.getenv("SCRIPT_TIMEOUT", "30"))  # 脚本执行超时时间（秒）

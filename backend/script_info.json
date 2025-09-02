@@ -1,0 +1,19 @@
+{
+  "counter": 1,
+  "storage": [
+    {
+      "id": "script_1",
+      "name": "calculator_demo",
+      "description": "基于 test_calculator 的按键脚本",
+      "path": "d:/A-master/Auto-test/backend/scripts_store/script_1.json",
+      "createdAt": "2025-09-02T00:00:00.000Z",
+      "updatedAt": "2025-09-02T00:00:00.000Z",
+      "status": "idle",
+      "lastRunTime": null,
+      "runCount": 0,
+      "target_machine_id": "machine_001",
+      "target_app_name": "calculator"
+    }
+  ]
+}
+

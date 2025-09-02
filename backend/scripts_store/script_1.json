@@ -1,0 +1,53 @@
+{
+  "target_machine_id": "machine_001",
+  "target_app_name": "calculator",
+  "steps": [
+    { "id": "1", "type": "click_element", "element_path": "1", "role_name_list": ["push button"] },
+    { "id": "2", "type": "click_element", "element_path": "2", "role_name_list": ["push button"] },
+    { "id": "3", "type": "click_element", "element_path": "+", "role_name_list": ["push button"] },
+    { "id": "4", "type": "click_element", "element_path": "3", "role_name_list": ["push button"] },
+    { "id": "5", "type": "click_element", "element_path": "4", "role_name_list": ["push button"] },
+    { "id": "6", "type": "click_element", "element_path": "=", "role_name_list": ["push button"] },
+
+    { "id": "7", "type": "click_element", "element_path": "5", "role_name_list": ["push button"] },
+    { "id": "8", "type": "click_element", "element_path": "×", "role_name_list": ["push button"] },
+    { "id": "9", "type": "click_element", "element_path": "6", "role_name_list": ["push button"] },
+    { "id": "10", "type": "click_element", "element_path": "-", "role_name_list": ["push button"] },
+    { "id": "11", "type": "click_element", "element_path": "7", "role_name_list": ["push button"] },
+    { "id": "12", "type": "click_element", "element_path": "=", "role_name_list": ["push button"] },
+
+    { "id": "13", "type": "click_element", "element_path": "8", "role_name_list": ["push button"] },
+    { "id": "14", "type": "click_element", "element_path": "1", "role_name_list": ["push button"] },
+    { "id": "15", "type": "click_element", "element_path": "÷", "role_name_list": ["push button"] },
+    { "id": "16", "type": "click_element", "element_path": "9", "role_name_list": ["push button"] },
+    { "id": "17", "type": "click_element", "element_path": "=", "role_name_list": ["push button"] },
+
+    { "id": "18", "type": "click_element", "element_path": "6", "role_name_list": ["push button"] },
+    { "id": "19", "type": "click_element", "element_path": ".", "role_name_list": ["push button"] },
+    { "id": "20", "type": "click_element", "element_path": "5", "role_name_list": ["push button"] },
+    { "id": "21", "type": "click_element", "element_path": "+", "role_name_list": ["push button"] },
+    { "id": "22", "type": "click_element", "element_path": "8", "role_name_list": ["push button"] },
+    { "id": "23", "type": "click_element", "element_path": ".", "role_name_list": ["push button"] },
+    { "id": "24", "type": "click_element", "element_path": "5", "role_name_list": ["push button"] },
+    { "id": "25", "type": "click_element", "element_path": "-", "role_name_list": ["push button"] },
+    { "id": "26", "type": "click_element", "element_path": "3", "role_name_list": ["push button"] },
+    { "id": "27", "type": "click_element", "element_path": ".", "role_name_list": ["push button"] },
+    { "id": "28", "type": "click_element", "element_path": "4", "role_name_list": ["push button"] },
+    { "id": "29", "type": "click_element", "element_path": "=", "role_name_list": ["push button"] },
+
+    { "id": "30", "type": "click_element", "element_path": "2", "role_name_list": ["push button"] },
+    { "id": "31", "type": "click_element", "element_path": ".", "role_name_list": ["push button"] },
+    { "id": "32", "type": "click_element", "element_path": "5", "role_name_list": ["push button"] },
+    { "id": "33", "type": "click_element", "element_path": "×", "role_name_list": ["push button"] },
+    { "id": "34", "type": "click_element", "element_path": "4", "role_name_list": ["push button"] },
+    { "id": "35", "type": "click_element", "element_path": ".", "role_name_list": ["push button"] },
+    { "id": "36", "type": "click_element", "element_path": "2", "role_name_list": ["push button"] },
+    { "id": "37", "type": "click_element", "element_path": "÷", "role_name_list": ["push button"] },
+    { "id": "38", "type": "click_element", "element_path": "1", "role_name_list": ["push button"] },
+    { "id": "39", "type": "click_element", "element_path": ".", "role_name_list": ["push button"] },
+    { "id": "40", "type": "click_element", "element_path": "2", "role_name_list": ["push button"] },
+    { "id": "41", "type": "click_element", "element_path": "=", "role_name_list": ["push button"] }
+  ]
+}
+
+

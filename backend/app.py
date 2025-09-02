@@ -42,9 +42,9 @@ is_running = False
 current_machine_id: Optional[str] = None
 current_app_name: Optional[str] = None
 
-# 脚本存储文件路径（从配置文件获取）
-SCRIPT_STORAGE_FILE = config.SCRIPT_STORAGE_FILE
-SCRIPT_COUNTER_FILE = config.SCRIPT_COUNTER_FILE
+# 脚本存储路径（从配置文件获取）
+SCRIPT_INFO_FILE = config.SCRIPT_INFO_FILE
+SCRIPTS_STORE_DIR = config.SCRIPTS_STORE_DIR
 
 class OperationResult(BaseModel):
     success: bool
@@ -84,7 +84,8 @@ class ScriptInfo(BaseModel):
     id: str
     name: str
     description: Optional[str] = None
-    content: str
+    path: str
+    content: Optional[str] = None
     createdAt: str
     updatedAt: str
     status: str = "idle"
@@ -115,9 +116,9 @@ class ScriptRunResult(BaseModel):
 
 # 脚本存储管理类
 class ScriptStorageManager:
-    def __init__(self, storage_file: str, counter_file: str):
-        self.storage_file = storage_file
-        self.counter_file = counter_file
+    def __init__(self, info_file: str, store_dir: str):
+        self.info_file = info_file
+        self.store_dir = store_dir
         self.scripts_storage: Dict[str, ScriptInfo] = {}
         self.script_counter = 0
         self._ensure_storage_dir()
@@ -125,34 +126,28 @@ class ScriptStorageManager:
     
     def _ensure_storage_dir(self):
         """确保存储目录存在"""
-        storage_dir = os.path.dirname(self.storage_file)
+        storage_dir = os.path.dirname(self.info_file)
         if not os.path.exists(storage_dir):
             os.makedirs(storage_dir, exist_ok=True)
             logger.info(f"创建脚本存储目录: {storage_dir}")
+        if not os.path.exists(self.store_dir):
+            os.makedirs(self.store_dir, exist_ok=True)
+            logger.info(f"创建脚本内容目录: {self.store_dir}")
     
     def _load_data(self):
         """从JSON文件加载脚本数据"""
         try:
-            # 加载脚本存储
-            if os.path.exists(self.storage_file):
-                with open(self.storage_file, 'r', encoding='utf-8') as f:
-                    scripts_data = json.load(f)
-                    # 将字典数据转换为ScriptInfo对象
-                    for script_id, script_data in scripts_data.items():
-                        self.scripts_storage[script_id] = ScriptInfo(** script_data)
-                logger.info(f"从文件加载了 {len(self.scripts_storage)} 个脚本")
+            if os.path.exists(self.info_file):
+                with open(self.info_file, 'r', encoding='utf-8') as f:
+                    info = json.load(f)
+                self.script_counter = int(info.get('counter', 0))
+                storage_list = info.get('storage', []) or []
+                for item in storage_list:
+                    # 兼容老字段：若存在 content 则保留；但主要以 path 为准
+                    self.scripts_storage[item['id']] = ScriptInfo(** item)
+                logger.info(f"从文件加载了 {len(self.scripts_storage)} 个脚本，计数器 {self.script_counter}")
             else:
-                logger.info("脚本存储文件不存在，使用空存储")
-            
-            # 加载脚本计数器
-            if os.path.exists(self.counter_file):
-                with open(self.counter_file, 'r', encoding='utf-8') as f:
-                    counter_data = json.load(f)
-                    self.script_counter = counter_data.get('counter', 0)
-                logger.info(f"脚本计数器: {self.script_counter}")
-            else:
-                logger.info("脚本计数器文件不存在，使用默认值0")
-                
+                logger.info("脚本信息文件不存在，使用空存储")
         except Exception as e:
             logger.error(f"加载脚本数据失败: {e}")
             # 使用默认值
@@ -162,23 +157,18 @@ class ScriptStorageManager:
     def _save_data(self):
         """保存脚本数据到JSON文件"""
         try:
-            # 确保存储目录存在
             self._ensure_storage_dir()
-            
-            # 保存脚本存储
-            scripts_data = {}
+            storage_list = []
             for script_id, script_info in self.scripts_storage.items():
-                scripts_data[script_id] = script_info.model_dump()
-            
-            with open(self.storage_file, 'w', encoding='utf-8') as f:
-                json.dump(scripts_data, f, ensure_ascii=False, indent=2)
-            
-            # 保存脚本计数器
-            with open(self.counter_file, 'w', encoding='utf-8') as f:
-                json.dump({'counter': self.script_counter}, f, ensure_ascii=False, indent=2)
-                
-            logger.info("脚本数据保存成功")
-            
+                data = script_info.model_dump()
+                # 避免把 content 大字段写入 info 文件
+                if 'content' in data:
+                    data.pop('content')
+                storage_list.append(data)
+            info_obj = {"counter": self.script_counter, "storage": storage_list}
+            with open(self.info_file, 'w', encoding='utf-8') as f:
+                json.dump(info_obj, f, ensure_ascii=False, indent=2)
+            logger.info("脚本元数据保存成功")
         except Exception as e:
             logger.error(f"保存脚本数据失败: {e}")
             raise
@@ -202,11 +192,17 @@ class ScriptStorageManager:
         
         # 创建脚本信息
         now = datetime.now().isoformat()
+        # 为脚本确定存储路径（使用 .json 作为内容文件扩展名）
+        file_name = f"{script_id}.json"
+        file_path = os.path.join(self.store_dir, file_name)
+        # 写入脚本内容到文件
+        with open(file_path, 'w', encoding='utf-8') as f:
+            f.write(req.content)
         script_info = ScriptInfo(
             id=script_id,
             name=req.name,
             description=req.description,
-            content=req.content,
+            path=file_path,
             createdAt=now,
             updatedAt=now,
             target_machine_id=req.target_machine_id,
@@ -236,7 +232,9 @@ class ScriptStorageManager:
             # 检查脚本大小
             if len(req.content.encode('utf-8')) > config.SCRIPT_MAX_SIZE:
                 raise ValueError(f"脚本内容过大，最大允许 {config.SCRIPT_MAX_SIZE} 字节")
-            script_info.content = req.content
+            # 写回内容文件
+            with open(script_info.path, 'w', encoding='utf-8') as f:
+                f.write(req.content)
         if req.target_machine_id is not None:
             script_info.target_machine_id = req.target_machine_id
         if req.target_app_name is not None:
@@ -255,6 +253,13 @@ class ScriptStorageManager:
         if script_id not in self.scripts_storage:
             return False
         
+        # 删除内容文件
+        try:
+            file_path = self.scripts_storage[script_id].path
+            if os.path.exists(file_path):
+                os.remove(file_path)
+        except Exception as _:
+            pass
         del self.scripts_storage[script_id]
         self._save_data()
         
@@ -275,8 +280,8 @@ class ScriptStorageManager:
         
         self._save_data()
 
-# 初始化脚本存储管理器
-script_manager = ScriptStorageManager(SCRIPT_STORAGE_FILE, SCRIPT_COUNTER_FILE)
+# 初始化脚本存储管理器（新结构）
+script_manager = ScriptStorageManager(SCRIPT_INFO_FILE, SCRIPTS_STORE_DIR)
 
 # 创建FastAPI应用
 app = FastAPI(
