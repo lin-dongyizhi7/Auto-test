@@ -105,7 +105,7 @@ class TestMachineCommunicator:
                     print(f"接受连接时发生错误: {str(e)}")
     
     def _handle_machine_connection(self, client_socket: socket.socket, client_addr: tuple) -> None:
-        """处理单个机器连接"""
+        """处理单个机器连接（被动连接模式）"""
         machine_id = None
         try:
             # 等待机器发送注册信息
@@ -113,6 +113,7 @@ class TestMachineCommunicator:
             if not data:
                 return
                 
+            print(f"收到来自 {client_addr} 的数据: {data}")
             register_info = json.loads(data)
             machine_id = register_info.get("machine_id")
             machine_info = register_info.get("machine_info", {})
@@ -187,14 +188,19 @@ class TestMachineCommunicator:
             client_socket.connect((host, port))
             print(f"主动连接到机器 {host}:{port}")
 
-            # 发送注册信息（作为客户端向目标机器注册）
-            register_info = {
-                "machine_id": self.server_id,  # 当前服务器标识
-                "machine_info": {"role": "test_server"}
+            # 发送连接请求
+            connection_request = {
+                "type": "connection_request",
+                "data": {
+                    "server_host": self.server_host,
+                    "server_port": self.server_port,
+                    "server_id": self.server_id
+                }
             }
-            client_socket.sendall(json.dumps(register_info).encode('utf-8'))
+            print(f"发送连接请求: {connection_request}")
+            client_socket.sendall(json.dumps(connection_request).encode('utf-8'))
 
-            # 等待响应
+            # 等待连接确认响应
             response = client_socket.recv(1024).decode('utf-8')
             if not response:
                 client_socket.close()
@@ -203,17 +209,37 @@ class TestMachineCommunicator:
             response_data = json.loads(response)
             if not response_data.get("success"):
                 client_socket.close()
-                return {"success": False, "error": response_data.get("error", "注册失败")}
+                return {"success": False, "error": response_data.get("error", "连接被拒绝")}
 
+            # 等待机器注册请求
+            registration_data = client_socket.recv(1024).decode('utf-8')
+            if not registration_data:
+                client_socket.close()
+                return {"success": False, "error": "未收到机器注册请求"}
+
+            registration_request = json.loads(registration_data)
+            if registration_request.get("type") != "machine_registration":
+                client_socket.close()
+                return {"success": False, "error": "收到无效的注册请求"}
+
+            # 处理机器注册
+            registration_result = self._handle_machine_registration(client_socket, registration_request)
+            if not registration_result.get("success"):
+                client_socket.close()
+                return registration_result
+
+            # 获取实际的machine_id（可能由服务器生成）
+            actual_machine_id = registration_result.get("machine_id", machine_id)
+            
             # 注册机器信息
-            self.machines[machine_id] = {
+            self.machines[actual_machine_id] = {
                 "address": (host, port),
-                "info": {"host": host, "port": port},
+                "info": registration_request.get("data", {}).get("machine_info", {}),
                 "connected_at": time.time(),
                 "status": "connected",
                 "last_seen": time.time()
             }
-            self.connections[machine_id] = client_socket
+            self.connections[actual_machine_id] = client_socket
 
             # 启动处理线程
             client_thread = threading.Thread(
@@ -226,14 +252,14 @@ class TestMachineCommunicator:
             # 发布连接事件
             self._publish_event(Event(
                 type=EventType.MACHINE_CONNECTED,
-                machine_id=machine_id,
+                machine_id=actual_machine_id,
                 app_name=None,
                 timestamp=time.time(),
                 data={"address": (host, port)},
                 source_machine=self.server_id
             ))
 
-            return {"success": True, "message": f"成功连接到机器 {machine_id}"}
+            return {"success": True, "message": f"成功连接到机器 {actual_machine_id}", "machine_id": actual_machine_id}
 
         except Exception as e:
             return {"success": False, "error": f"连接失败: {str(e)}"}
@@ -250,7 +276,9 @@ class TestMachineCommunicator:
         """处理来自机器的请求"""
         request_type = request.get("type")
         
-        if request_type == "register_app":
+        if request_type == "machine_registration":
+            return self._handle_machine_registration(None, request)
+        elif request_type == "register_app":
             return self._handle_app_registration(machine_id, request)
         elif request_type == "get_screenshot":
             return self._handle_screenshot_request(machine_id, request)
@@ -272,6 +300,53 @@ class TestMachineCommunicator:
             return self._handle_heartbeat(machine_id, request)
         else:
             return {"success": False, "error": f"未知请求类型: {request_type}"}
+    
+    def _handle_machine_registration(self, client_socket: socket.socket, request: Dict) -> Dict:
+        """处理机器注册请求"""
+        try:
+            data = request.get("data", {})
+            requested_machine_id = data.get("machine_id")
+            machine_info = data.get("machine_info", {})
+            
+            # 检查machine_id是否已存在
+            if requested_machine_id and requested_machine_id in self.machines:
+                # 如果请求的ID已存在，生成新的ID
+                actual_machine_id = self._generate_unique_machine_id()
+                print(f"机器ID {requested_machine_id} 已存在，生成新ID: {actual_machine_id}")
+            elif requested_machine_id:
+                # 使用请求的ID
+                actual_machine_id = requested_machine_id
+                print(f"使用请求的机器ID: {actual_machine_id}")
+            else:
+                # 生成新的ID
+                actual_machine_id = self._generate_unique_machine_id()
+                print(f"未提供机器ID，生成新ID: {actual_machine_id}")
+            
+            # 发送注册成功响应
+            response = {
+                "success": True,
+                "machine_id": actual_machine_id,
+                "message": "机器注册成功"
+            }
+            
+            if client_socket:
+                client_socket.sendall(json.dumps(response).encode('utf-8'))
+            
+            return {"success": True, "machine_id": actual_machine_id}
+            
+        except Exception as e:
+            error_response = {"success": False, "error": f"机器注册失败: {str(e)}"}
+            if client_socket:
+                client_socket.sendall(json.dumps(error_response).encode('utf-8'))
+            return {"success": False, "error": f"机器注册失败: {str(e)}"}
+    
+    def _generate_unique_machine_id(self) -> str:
+        """生成唯一的机器ID"""
+        import random
+        while True:
+            machine_id = f"machine_{random.randint(1000, 9999)}"
+            if machine_id not in self.machines:
+                return machine_id
     
     def _handle_app_registration(self, machine_id: str, request: Dict) -> Dict:
         """处理应用注册请求"""

@@ -463,12 +463,13 @@ async def connect_to_machine(request: dict):
     
     try:
         host = request.get("host")
-        port = request.get("port")
+        # 按要求固定使用 8888 端口与测试机器连接
+        port = 8888
         
-        if not host or not port:
+        if not host:
             return OperationResult(
                 success=False,
-                error="主机地址和端口不能为空"
+                error="主机地址不能为空"
             )
         
         # 生成机器ID
