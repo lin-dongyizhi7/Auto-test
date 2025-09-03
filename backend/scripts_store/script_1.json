@@ -1,5 +1,4 @@
 {
-  "target_machine_id": "machine_001",
   "target_app_name": "calculator",
   "steps": [
     { "id": "1", "type": "click_element", "element_path": "1", "role_name_list": ["push button"] },

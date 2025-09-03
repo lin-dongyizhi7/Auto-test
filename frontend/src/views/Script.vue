@@ -40,21 +40,14 @@
         <el-table-column prop="description" label="描述" min-width="200" show-overflow-tooltip />
         <el-table-column label="目标" width="200">
           <template #default="{ row }">
-            <div v-if="row.target_machine_id && row.target_app_name">
-              <el-tag size="small" type="info">{{ row.target_machine_id }}</el-tag>
+            <div v-if="row.target_app_name">
               <span style="margin: 0 5px">/</span>
               <el-tag size="small" type="success">{{ row.target_app_name }}</el-tag>
             </div>
             <span v-else style="color: #909399">未设置</span>
           </template>
         </el-table-column>
-        <el-table-column prop="status" label="状态" width="100">
-          <template #default="{ row }">
-            <el-tag :type="getStatusType(row.status)">
-              {{ getStatusText(row.status) }}
-            </el-tag>
-          </template>
-        </el-table-column>
+        
         <el-table-column prop="runCount" label="运行次数" width="100" />
         <el-table-column prop="lastRunTime" label="最后运行" width="180">
           <template #default="{ row }">
@@ -75,7 +68,6 @@
                   size="small" 
                   circle
                   @click="onRunScript(row)" 
-                  :loading="row.status === 'running'"
                 >
                   <el-icon><VideoPlay /></el-icon>
                 </el-button>
@@ -140,16 +132,7 @@
         <el-form-item label="描述">
           <el-input v-model="createForm.description" type="textarea" placeholder="请输入脚本描述" />
         </el-form-item>
-        <el-form-item label="目标机器">
-          <el-select v-model="createForm.target_machine_id" placeholder="选择目标机器" style="width: 100%">
-            <el-option 
-              v-for="machine in availableMachines" 
-              :key="machine.id"
-              :label="machine.address"
-              :value="machine.id"
-            />
-          </el-select>
-        </el-form-item>
+        
         
         <el-form-item label="目标应用">
           <el-select v-model="createForm.target_app_name" placeholder="选择目标应用" style="width: 100%">
@@ -194,16 +177,7 @@
         <el-form-item label="描述">
           <el-input v-model="editForm.description" type="textarea" placeholder="请输入脚本描述" />
         </el-form-item>
-        <el-form-item label="目标机器">
-          <el-select v-model="editForm.target_machine_id" placeholder="选择目标机器" style="width: 100%">
-            <el-option 
-              v-for="machine in availableMachines" 
-              :key="machine.id"
-              :label="machine.address"
-              :value="machine.id"
-            />
-          </el-select>
-        </el-form-item>
+        
         
         <el-form-item label="目标应用">
           <el-select v-model="editForm.target_app_name" placeholder="选择目标应用" style="width: 100%">
@@ -279,18 +253,14 @@
       <div v-if="currentScript">
         <el-descriptions :column="2" border>
           <el-descriptions-item label="脚本名称">{{ currentScript.name }}</el-descriptions-item>
-          <el-descriptions-item label="状态">
-            <el-tag :type="getStatusType(currentScript.status)">
-              {{ getStatusText(currentScript.status) }}
-            </el-tag>
-          </el-descriptions-item>
+          
           <el-descriptions-item label="运行次数">{{ currentScript.runCount }}</el-descriptions-item>
           <el-descriptions-item label="最后运行">
             {{ currentScript.lastRunTime ? formatTime(currentScript.lastRunTime) : '未运行' }}
           </el-descriptions-item>
           <el-descriptions-item label="创建时间">{{ formatTime(currentScript.createdAt) }}</el-descriptions-item>
           <el-descriptions-item label="更新时间">{{ formatTime(currentScript.updatedAt) }}</el-descriptions-item>
-          <el-descriptions-item label="目标机器">{{ currentScript.target_machine_id || '未设置' }}</el-descriptions-item>
+          
           <el-descriptions-item label="目标应用">{{ currentScript.target_app_name || '未设置' }}</el-descriptions-item>
           <el-descriptions-item label="描述" :span="2">{{ currentScript.description || '无' }}</el-descriptions-item>
         </el-descriptions>
@@ -312,49 +282,28 @@
       </template>
     </el-dialog>
 
-    <!-- 运行结果对话框 -->
+    <!-- 选择运行机器对话框 -->
     <el-dialog
-      v-model="showResultDialog"
-      title="运行结果"
-      width="600px"
+      v-model="showRunDialog"
+      title="选择运行机器"
+      width="420px"
       :close-on-click-modal="false"
     >
-      <div v-if="runResult">
-        <el-alert
-          :title="runResult.success ? '运行成功' : '运行失败'"
-          :type="runResult.success ? 'success' : 'error'"
-          :closable="false"
-          show-icon
-        />
-        
-                 <div class="result-content">
-           <h4>输出信息</h4>
-           <el-input
-             :model-value="runResult.output || '无输出'"
-             type="textarea"
-             :rows="8"
-             readonly
-             font-family="monospace"
-           />
-           
-           <h4 v-if="runResult.error">错误信息</h4>
-           <el-input
-             v-if="runResult.error"
-             :model-value="runResult.error"
-             type="textarea"
-             :rows="6"
-             readonly
-             font-family="monospace"
-             class="error-output"
-           />
-          
-          <div v-if="runResult.executionTime" class="execution-time">
-            执行时间: {{ runResult.executionTime }}ms
-          </div>
-        </div>
-      </div>
+      <el-form label-width="100px">
+        <el-form-item label="目标机器" required>
+          <el-select v-model="runTargetMachineId" placeholder="请选择机器" style="width: 100%">
+            <el-option 
+              v-for="m in availableMachines"
+              :key="m.machine_id"
+              :label="Array.isArray(m.address) ? `${m.address[0]}:${m.address[1]}` : m.address"
+              :value="m.machine_id"
+            />
+          </el-select>
+        </el-form-item>
+      </el-form>
       <template #footer>
-        <el-button @click="showResultDialog = false">关闭</el-button>
+        <el-button @click="showRunDialog = false">取消</el-button>
+        <el-button type="primary" :loading="running" @click="confirmRunScript">运行</el-button>
       </template>
     </el-dialog>
   </div>
@@ -362,6 +311,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, onMounted, computed } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import { Plus, Upload, Refresh, UploadFilled, VideoPlay, Edit, Download, Delete } from '@element-plus/icons-vue'
 import { 
@@ -378,6 +328,7 @@ import type { ScriptInfo, CreateScriptRequest, UpdateScriptRequest, ScriptRunRes
 import { useOperationStore } from '@/stores/operation'
 
 const operationStore = useOperationStore()
+const router = useRouter()
 
 // 响应式数据
 const loading = ref(false)
@@ -389,7 +340,7 @@ const showCreateDialog = ref(false)
 const showEditDialog = ref(false)
 const showImportDialog = ref(false)
 const showViewDialog = ref(false)
-const showResultDialog = ref(false)
+const showRunDialog = ref(false)
 
 // 计算属性
 const availableMachines = computed(() => operationStore.machines)
@@ -400,13 +351,13 @@ const createForm = reactive<CreateScriptRequest>({
   name: '',
   description: '',
   content: '',
-  target_machine_id: '',
+  
   target_app_name: ''
 })
 
 const editForm = reactive<UpdateScriptRequest>({
   name: '',
-  target_machine_id: '',
+  
   target_app_name: '',
   description: '',
   content: ''
@@ -414,7 +365,9 @@ const editForm = reactive<UpdateScriptRequest>({
 
 // 当前操作的脚本
 const currentScript = ref<ScriptInfo | null>(null)
-const runResult = ref<ScriptRunResult | null>(null)
+const runningScript = ref<ScriptInfo | null>(null)
+const running = ref(false)
+const runTargetMachineId = ref('')
 
 // 加载状态
 const creating = ref(false)
@@ -432,9 +385,7 @@ const createRules: FormRules = {
     { required: true, message: '请输入脚本名称', trigger: 'blur' },
     { min: 1, max: 50, message: '长度在 1 到 50 个字符', trigger: 'blur' }
   ],
-  target_machine_id: [
-    { required: true, message: '请选择目标机器', trigger: 'change' }
-  ],
+  
   target_app_name: [
     { required: true, message: '请选择目标应用', trigger: 'change' }
   ],
@@ -448,9 +399,7 @@ const editRules: FormRules = {
     { required: true, message: '请输入脚本名称', trigger: 'blur' },
     { min: 1, max: 50, message: '长度在 1 到 50 个字符', trigger: 'blur' }
   ],
-  target_machine_id: [
-    { required: true, message: '请选择目标机器', trigger: 'change' }
-  ],
+  
   target_app_name: [
     { required: true, message: '请选择目标应用', trigger: 'change' }
   ],
@@ -489,25 +438,7 @@ const handleSelectionChange = (selection: ScriptInfo[]) => {
   selectedScripts.value = selection
 }
 
-const getStatusType = (status: string): 'info' | 'warning' | 'success' | 'danger' => {
-  const statusMap: Record<string, 'info' | 'warning' | 'success' | 'danger'> = {
-    idle: 'info',
-    running: 'warning',
-    completed: 'success',
-    failed: 'danger'
-  }
-  return statusMap[status] || 'info'
-}
-
-const getStatusText = (status: string) => {
-  const statusMap: Record<string, string> = {
-    idle: '空闲',
-    running: '运行中',
-    completed: '已完成',
-    failed: '失败'
-  }
-  return statusMap[status] || '未知'
-}
+ 
 
 const formatTime = (time: string) => new Date(time).toLocaleString('zh-CN')
 
@@ -515,7 +446,7 @@ const resetCreateForm = () => {
   createForm.name = ''
   createForm.description = ''
   createForm.content = ''
-  createForm.target_machine_id = ''
+  
   createForm.target_app_name = ''
 }
 
@@ -523,7 +454,7 @@ const resetEditForm = () => {
   editForm.name = ''
   editForm.description = ''
   editForm.content = ''
-  editForm.target_machine_id = ''
+  
   editForm.target_app_name = ''
 }
 
@@ -550,13 +481,22 @@ const onCreateScript = async () => {
 }
 
 // 编辑脚本
-const editScript = (script: ScriptInfo) => {
+const editScript = async (script: ScriptInfo) => {
   currentScript.value = script
-  editForm.name = script.name
-  editForm.description = script.description || ''
-  editForm.content = script.content
-  editForm.target_machine_id = script.target_machine_id || ''
-  editForm.target_app_name = script.target_app_name || ''
+  try {
+    const resp = await getScriptApi(script.id)
+    const data = resp.data as ScriptInfo
+    editForm.name = data.name
+    editForm.description = data.description || ''
+    editForm.content = data.content
+    editForm.target_app_name = data.target_app_name || ''
+  } catch (e) {
+    // 回退到传入的行数据
+    editForm.name = script.name
+    editForm.description = script.description || ''
+    editForm.content = script.content
+    editForm.target_app_name = script.target_app_name || ''
+  }
   showEditDialog.value = true
 }
 
@@ -622,17 +562,36 @@ const batchDelete = async () => {
   }
 }
 
-// 运行脚本
-const onRunScript = async (script: ScriptInfo) => {
+// 运行脚本（选择机器 -> 调用API -> 跳转）
+const onRunScript = (script: ScriptInfo) => {
+  runningScript.value = script
+  runTargetMachineId.value = ''
+  showRunDialog.value = true
+}
+
+const confirmRunScript = async () => {
+  if (!runningScript.value) return
+  if (!runTargetMachineId.value) {
+    ElMessage.warning('请选择要运行的目标机器')
+    return
+  }
+  running.value = true
   try {
-    const response = await runScriptApi(script.id)
-    // 新的API直接返回数据
-    runResult.value = response.data || null
-    showResultDialog.value = true
-    loadScripts()
+    const response = await runScriptApi(runningScript.value.id, runTargetMachineId.value)
+    if (response.success) {
+      ElMessage.success('已触发脚本运行')
+      showRunDialog.value = false
+      await loadScripts()
+      // 跳转到操作控制页面并带上机器ID
+      router.push({ name: 'Operation', query: { machine: runTargetMachineId.value } })
+    } else {
+      ElMessage.error(response.error || '运行脚本失败')
+    }
   } catch (error) {
-    ElMessage.error('脚本运行失败')
+    ElMessage.error('运行脚本失败')
     console.error('Run script error:', error)
+  } finally {
+    running.value = false
   }
 }
 

@@ -74,7 +74,7 @@
       <el-row v-else :gutter="16">
         <el-col v-for="m in machines" :key="m.machine_id" :span="8">
           <el-card class="machine-card" shadow="hover">
-            <div class="machine-row" @click="$router.push(`/machine/${m.machine_id}`)">
+            <div class="machine-row" @click="$router.push({ name: 'Operation', query: { machine: m.machine_id } })">
               <el-tag :type="m.status === 'connected' ? 'success' : 'danger'" size="small">{{ m.status }}</el-tag>
               <span class="machine-name">{{ Array.isArray(m.address) ? `${m.address[0]}:${m.address[1]}` : m.address }}</span>
             </div>

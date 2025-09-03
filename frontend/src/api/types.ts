@@ -116,18 +116,16 @@ export interface ScriptInfo {
   content: string;
   createdAt: string;
   updatedAt: string;
-  status: string;
   lastRunTime?: string;
   runCount: number;
-  target_machine_id?: string;
   target_app_name?: string;
+  last_run_machine_id?: string;
 }
 
 export interface CreateScriptRequest {
   name: string;
   description?: string;
   content: string;
-  target_machine_id?: string;
   target_app_name?: string;
 }
 
@@ -135,7 +133,6 @@ export interface UpdateScriptRequest {
   name?: string;
   description?: string;
   content?: string;
-  target_machine_id?: string;
   target_app_name?: string;
 }
 

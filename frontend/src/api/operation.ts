@@ -139,8 +139,8 @@ export const deleteScript = (id: string): Promise<ApiResponse> => {
   return request.delete(`/api/scripts/${id}`)
 }
 
-export const runScript = (id: string): Promise<ApiResponse<ScriptRunResult>> => {
-  return request.post(`/api/scripts/${id}/run`)
+export const runScript = (id: string, machine_id?: string): Promise<ApiResponse<ScriptRunResult>> => {
+  return request.post(`/api/scripts/${id}/run`, { machine_id })
 }
 
 // 事件管理API

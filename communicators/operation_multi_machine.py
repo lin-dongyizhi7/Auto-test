@@ -675,7 +675,6 @@ class MultiMachineOperation:
 
         脚本示例结构：
         {
-            "target_machine_id": "machine_001",
             "target_app_name": "calculator",
             "steps": [
                 {"id": "1", "type": "wait_element", "element_path": "菜单/文件", "role_name_list": ["menu item"], "description": "等待菜单"},

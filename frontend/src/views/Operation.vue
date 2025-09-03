@@ -1,59 +1,35 @@
 <template>
   <div class="operation-page">
-    <!-- 服务端测试服务器状态面板 -->
-    <el-card class="status-panel" shadow="hover">
+    <!-- 顶部机器页签 -->
+    <el-card class="machines-tabs" shadow="hover">
       <template #header>
         <div class="card-header">
-          <span>测试服务器状态</span>
-          <el-tag :type="isConnected ? 'success' : 'danger'" size="small">
-            {{ isConnected ? '已连接' : '未连接' }}
+          <span>机器选择</span>
+          <el-tag v-if="availableMachines.length > 0" type="info" size="small">
+            共 {{ availableMachines.length }} 台
           </el-tag>
         </div>
       </template>
-      
-      <el-descriptions :column="3" border>
-        <el-descriptions-item label="监听端口">
-          {{ connectionForm.port }}
-        </el-descriptions-item>
-        <el-descriptions-item label="当前目标">
-          {{ currentTarget ? `${currentTarget.machine_id} / ${currentTarget.app_name}` : '未设置' }}
-        </el-descriptions-item>
-        <el-descriptions-item label="可用机器">
-          {{ availableMachines.length }} 台
-        </el-descriptions-item>
-      </el-descriptions>
-      
-      <div class="status-actions">
-        <el-button 
-          v-if="!isConnected"
-          type="primary" 
-          @click="handleConnect"
-          :loading="connecting"
-        >
-          启动测试服务器
-        </el-button>
-        <el-button 
-          v-else
-          type="danger" 
-          @click="handleDisconnect"
-        >
-          停止测试服务器
-        </el-button>
-        <el-button 
-          type="success"
-          @click="refreshStatus"
-          :disabled="!isConnected"
-        >
-          刷新状态
-        </el-button>
+      <div v-if="availableMachines.length === 0">
+        <el-empty description="暂无机器连接" />
+      </div>
+      <div v-else>
+        <el-tabs v-model="selectedMachineId" @tab-change="onMachineTabChange">
+          <el-tab-pane 
+            v-for="m in availableMachines" 
+            :key="m.machine_id || m.id"
+            :name="m.machine_id || m.id"
+            :label="Array.isArray(m.address) ? `${m.address[0]}:${m.address[1]}` : (m.address || m.id)"
+          />
+        </el-tabs>
       </div>
     </el-card>
 
-    <!-- 目标机器和应用选择面板 -->
-    <el-card v-if="isConnected" class="target-panel" shadow="hover">
+    <!-- 目标机器和应用、脚本选择面板 -->
+    <el-card class="target-panel" shadow="hover">
       <template #header>
         <div class="card-header">
-          <span>目标机器和应用</span>
+          <span>目标应用与脚本</span>
           <el-tag v-if="currentTarget" type="info" size="small">
             当前: {{ currentTarget.machine_id }} / {{ currentTarget.app_name }}
           </el-tag>
@@ -61,28 +37,6 @@
       </template>
       
       <el-row :gutter="20">
-        <!-- 机器选择 -->
-        <el-col :span="8">
-          <el-form label-width="80px">
-            <el-form-item label="选择机器">
-              <el-select 
-                v-model="selectedMachineId" 
-                placeholder="选择目标机器"
-                @change="handleMachineChange"
-                :loading="loadingMachines"
-                style="width: 100%"
-              >
-                <el-option 
-                  v-for="machine in availableMachines" 
-                  :key="machine.id"
-                  :label="machine.address"
-                  :value="machine.id"
-                />
-              </el-select>
-            </el-form-item>
-          </el-form>
-        </el-col>
-        
         <!-- 应用选择 -->
         <el-col :span="8">
           <el-form label-width="80px">
@@ -97,16 +51,38 @@
               >
                 <el-option 
                   v-for="app in availableApps" 
-                  :key="app.id"
-                  :label="app.name"
-                  :value="app.name"
+                  :key="app.app_id || app.id"
+                  :label="app.app_name || app.name"
+                  :value="app.app_name || app.name"
                 />
               </el-select>
             </el-form-item>
           </el-form>
         </el-col>
         
-        <!-- 设置目标按钮 -->
+        <!-- 脚本选择 -->
+        <el-col :span="8">
+          <el-form label-width="80px">
+            <el-form-item label="选择脚本">
+              <el-select 
+                v-model="selectedScriptId"
+                placeholder="选择脚本"
+                filterable
+                :loading="loadingScripts"
+                style="width: 100%"
+              >
+                <el-option 
+                  v-for="s in scripts"
+                  :key="s.id"
+                  :label="s.name"
+                  :value="s.id"
+                />
+              </el-select>
+            </el-form-item>
+          </el-form>
+        </el-col>
+
+        <!-- 设置目标与运行脚本按钮 -->
         <el-col :span="8">
           <el-form-item>
             <el-button 
@@ -116,6 +92,14 @@
               style="margin-top: 32px"
             >
               设置目标
+            </el-button>
+            <el-button 
+              type="success"
+              @click="handleRunSelectedScript"
+              :disabled="!selectedScriptId"
+              style="margin-top: 32px; margin-left: 10px;"
+            >
+              运行所选脚本
             </el-button>
           </el-form-item>
         </el-col>
@@ -350,87 +334,7 @@
       </el-col>
     </el-row>
 
-    <!-- 机器视图监控面板 -->
-    <el-card v-if="isConnected && availableMachines.length > 0" class="machine-view-panel" shadow="hover">
-      <template #header>
-        <div class="card-header">
-          <span>机器视图监控</span>
-          <div class="view-controls">
-            <el-button 
-              size="small" 
-              @click="previousMachine" 
-              :disabled="currentMachineIndex === 0"
-            >
-              <el-icon><ArrowLeft /></el-icon>
-              上一个
-            </el-button>
-            <span class="machine-counter">
-              {{ currentMachineIndex + 1 }} / {{ availableMachines.length }}
-            </span>
-            <el-button 
-              size="small" 
-              @click="nextMachine"
-              :disabled="currentMachineIndex === availableMachines.length - 1"
-            >
-              下一个
-              <el-icon><ArrowRight /></el-icon>
-            </el-button>
-          </div>
-        </div>
-      </template>
-      
-      <div class="machine-view-content">
-        <div class="current-machine-info">
-          <el-tag size="large" type="primary">
-            {{ currentViewMachine?.address || '未知机器' }}
-          </el-tag>
-          <el-tag size="large" type="info">
-            ID: {{ currentViewMachine?.id || 'N/A' }}
-          </el-tag>
-        </div>
-        
-        <div class="machine-apps-grid">
-          <div 
-            v-for="app in currentViewMachineApps" 
-            :key="app.id"
-            class="app-card"
-            :class="{ 'current-target': isCurrentTarget(app) }"
-            @click="setAsTarget(app)"
-          >
-            <div class="app-header">
-              <el-tag 
-                :type="getAppStatusType(app.status)" 
-                size="small"
-              >
-                {{ app.status || 'running' }}
-              </el-tag>
-              <span class="app-name">{{ app.name }}</span>
-            </div>
-            <div class="app-details">
-              <span class="app-region" v-if="app.region">
-                区域: {{ app.region }}
-              </span>
-              <span class="app-machine-id">
-                机器: {{ app.machine_id }}
-              </span>
-            </div>
-            <div class="app-actions">
-              <el-button 
-                size="small" 
-                type="primary"
-                @click.stop="takeMachineScreenshot(app)"
-              >
-                截图
-              </el-button>
-            </div>
-          </div>
-        </div>
-        
-        <div v-if="currentViewMachineApps.length === 0" class="no-apps">
-          <el-empty description="该机器暂无可用应用" />
-        </div>
-      </div>
-    </el-card>
+    <!-- 机器视图面板已移除 -->
 
     <!-- 操作日志面板 -->
     <el-card class="log-panel" shadow="hover">
@@ -464,22 +368,20 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useOperationStore } from '@/stores/operation'
 import type { MachineAppTarget } from '@/api/types'
-import { ArrowLeft, ArrowRight } from '@element-plus/icons-vue'
+import { getScripts as getScriptsApi, runScript as runScriptApi } from '@/api/operation'
 
 const store = useOperationStore()
+const route = useRoute()
 
 // 响应式数据
-const connectionForm = ref({
-  host: 'localhost',
-  port: 8888
-})
-
 const selectedMachineId = ref('')
 const selectedAppName = ref('')
 const screenshotRegion = ref('')
+const selectedScriptId = ref('')
 
 // 表单数据
 const elementForm = ref({
@@ -519,39 +421,14 @@ const loadingMachines = computed(() => store.loadingMachines)
 const loadingApps = computed(() => store.loadingApps)
 const operationLogs = computed(() => store.operationLogs)
 const currentScreenshot = computed(() => store.currentScreenshot)
+const scripts = ref<any[]>([])
+const loadingScripts = ref(false)
 
 // 方法
-const handleConnect = async () => {
-  const success = await store.startTestServer(connectionForm.value.port)
-  if (success) {
-    ElMessage.success('服务器启动成功')
-  } else {
-    ElMessage.error('服务器启动失败')
-  }
-}
-
-const handleDisconnect = async () => {
-  const success = await store.stopTestServer()
-  if (success) {
-    ElMessage.success('服务器已停止')
-    selectedMachineId.value = ''
-    selectedAppName.value = ''
-  } else {
-    ElMessage.error('停止服务器失败')
-  }
-}
-
-const refreshStatus = async () => {
-  try {
-    await store.refreshServerStatus()
-    if (isConnected.value) {
-      await store.refreshMachines()
-      await store.refreshCurrentTarget()
-    }
-    ElMessage.success('状态已刷新')
-  } catch (error) {
-    ElMessage.error(`刷新状态失败: ${error instanceof Error ? error.message : '未知错误'}`)
-  }
+const onMachineTabChange = async () => {
+  selectedAppName.value = ''
+  await handleMachineChange()
+  await refreshLogsSilent()
 }
 
 const handleMachineChange = async () => {
@@ -563,6 +440,37 @@ const handleMachineChange = async () => {
 
 const handleAppChange = () => {
   // 应用选择改变时的处理
+}
+
+const loadScripts = async () => {
+  loadingScripts.value = true
+  try {
+    const response = await getScriptsApi()
+    scripts.value = response.data?.scripts || []
+  } catch (e) {
+    scripts.value = []
+  } finally {
+    loadingScripts.value = false
+  }
+}
+
+const handleRunSelectedScript = async () => {
+  if (!selectedScriptId.value) {
+    ElMessage.warning('请先选择脚本')
+    return
+  }
+  try {
+    const response = await runScriptApi(selectedScriptId.value)
+    if (response.success) {
+      ElMessage.success('脚本已触发运行')
+      await loadScripts()
+      await refreshLogsSilent()
+    } else {
+      ElMessage.error(response.error || '运行脚本失败')
+    }
+  } catch (error) {
+    ElMessage.error('运行脚本失败')
+  }
 }
 
 const handleSetTarget = async () => {
@@ -727,75 +635,28 @@ const formatLogTime = (log: string) => {
   return timeMatch ? timeMatch[1] : ''
 }
 
-// 机器视图相关
-const currentMachineIndex = ref(0)
-const currentViewMachine = computed(() => availableMachines.value[currentMachineIndex.value])
-const currentViewMachineApps = computed(() => {
-  if (!currentViewMachine.value) return []
-  return store.availableApps.filter((app: any) => app.machine_id === currentViewMachine.value.id)
-})
-
-const isCurrentTarget = (app: { machine_id: string; name: string }) => {
-  return currentTarget.value?.machine_id === app.machine_id && currentTarget.value?.app_name === app.name
-}
-
-const setAsTarget = async (app: { machine_id: string; name: string }) => {
-  const target: MachineAppTarget = {
-    machine_id: app.machine_id,
-    app_name: app.name
-  }
-  const success = await store.setCurrentTarget(target)
-  if (success) {
-    ElMessage.success(`已设置目标为: ${app.machine_id} / ${app.name}`)
-  } else {
-    ElMessage.error('设置目标失败')
-  }
-}
-
-const takeMachineScreenshot = async (app: { machine_id: string; name: string }) => {
+const refreshLogsSilent = async () => {
   try {
-    // 先设置目标，再截图
-    const target: MachineAppTarget = {
-      machine_id: app.machine_id,
-      app_name: app.name
-    }
-    await store.setCurrentTarget(target)
-    const result = await store.takeScreenshot()
-    if (result) {
-      ElMessage.success('截图成功')
-    }
+    await store.getEventHistory()
   } catch (error) {
-    ElMessage.error('截图失败')
+    // ignore
   }
 }
 
-const getAppStatusType = (status: string): 'success' | 'danger' | 'warning' | 'info' => {
-  const statusMap: Record<string, 'success' | 'danger' | 'warning' | 'info'> = {
-    running: 'success',
-    stopped: 'danger',
-    starting: 'warning',
-    error: 'danger'
-  }
-  return statusMap[status] || 'info'
-}
-
-const previousMachine = () => {
-  currentMachineIndex.value--
-  if (currentMachineIndex.value < 0) {
-    currentMachineIndex.value = availableMachines.value.length - 1
-  }
-}
-
-const nextMachine = () => {
-  currentMachineIndex.value++
-  if (currentMachineIndex.value >= availableMachines.value.length) {
-    currentMachineIndex.value = 0
-  }
-}
 
 // 生命周期
 onMounted(async () => {
   await store.initialize()
+  await store.refreshMachines().catch(() => {})
+  await loadScripts()
+  const qMachine = (route.query.machine as string) || ''
+  if (qMachine) {
+    selectedMachineId.value = qMachine
+    await handleMachineChange()
+  } else if (availableMachines.value.length > 0) {
+    selectedMachineId.value = (availableMachines.value[0] as any).machine_id || (availableMachines.value[0] as any).id
+    await handleMachineChange()
+  }
 })
 </script>
 
@@ -803,7 +664,7 @@ onMounted(async () => {
 .operation-page {
   padding: 20px;
   
-  .status-panel,
+  .machines-tabs,
   .target-panel,
   .operation-panel,
   .log-panel,

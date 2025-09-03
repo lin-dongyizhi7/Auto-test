@@ -88,24 +88,21 @@ class ScriptInfo(BaseModel):
     content: Optional[str] = None
     createdAt: str
     updatedAt: str
-    status: str = "idle"
     lastRunTime: Optional[str] = None
     runCount: int = 0
-    target_machine_id: Optional[str] = None
     target_app_name: Optional[str] = None
+    last_run_machine_id: Optional[str] = None
 
 class CreateScriptRequest(BaseModel):
     name: str
     description: Optional[str] = None
     content: str
-    target_machine_id: Optional[str] = None
     target_app_name: Optional[str] = None
 
 class UpdateScriptRequest(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
     content: Optional[str] = None
-    target_machine_id: Optional[str] = None
     target_app_name: Optional[str] = None
 
 class ScriptRunResult(BaseModel):
@@ -205,7 +202,6 @@ class ScriptStorageManager:
             path=file_path,
             createdAt=now,
             updatedAt=now,
-            target_machine_id=req.target_machine_id,
             target_app_name=req.target_app_name
         )
         
@@ -235,8 +231,6 @@ class ScriptStorageManager:
             # 写回内容文件
             with open(script_info.path, 'w', encoding='utf-8') as f:
                 f.write(req.content)
-        if req.target_machine_id is not None:
-            script_info.target_machine_id = req.target_machine_id
         if req.target_app_name is not None:
             script_info.target_app_name = req.target_app_name
         
@@ -267,12 +261,11 @@ class ScriptStorageManager:
         return True
     
     def update_script_status(self, script_id: str, status: str, last_run_time: Optional[str] = None):
-        """更新脚本状态"""
+        """兼容旧接口：不再保存状态，仅更新时间与计数"""
         if script_id not in self.scripts_storage:
             return
         
         script_info = self.scripts_storage[script_id]
-        script_info.status = status
         
         if last_run_time:
             script_info.lastRunTime = last_run_time
@@ -305,10 +298,8 @@ class ScriptStorageManager:
             path=script_file_path,
             createdAt=now,
             updatedAt=now,
-            status="idle",
             lastRunTime=None,
             runCount=0,
-            target_machine_id="",
             target_app_name=""
         )
         
@@ -1037,7 +1028,14 @@ async def get_script(script_id: str):
                 success=False,
                 error="脚本不存在"
             )
-        
+        # 读取脚本文件内容并填充
+        try:
+            if os.path.exists(script.path):
+                with open(script.path, 'r', encoding='utf-8') as f:
+                    script.content = f.read()
+        except Exception as _:
+            script.content = script.content or ""
+
         return OperationResult(
             success=True,
             data=script.model_dump()
@@ -1104,7 +1102,7 @@ async def delete_script(script_id: str):
         )
 
 @app.post("/api/scripts/{script_id}/run", response_model=OperationResult)
-async def run_script(script_id: str):
+async def run_script(script_id: str, machine_id: Optional[str] = None):
     """运行脚本"""
     try:
         script = script_manager.get_script(script_id)
@@ -1116,6 +1114,12 @@ async def run_script(script_id: str):
         
         # 更新脚本状态
         script_manager.update_script_status(script_id, "running", datetime.now().isoformat())
+        # 记录本次运行机器
+        if machine_id:
+            script.last_run_machine_id = machine_id
+            script.updatedAt = datetime.now().isoformat()
+            # 持久化到文件
+            script_manager._save_data()
         
         # 这里应该实现脚本执行逻辑
         # 暂时返回成功

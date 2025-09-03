@@ -17,22 +17,24 @@
 
 ### 3. 文件格式
 
-#### scripts_storage.json
+#### 脚本信息存储（当前实现）
 ```json
 {
-  "script_1": {
-    "id": "script_1",
-    "name": "脚本名称",
-    "description": "脚本描述",
-    "content": "#!/usr/bin/env python3\n# 脚本内容...",
-    "createdAt": "2025-01-27T16:30:00",
-    "updatedAt": "2025-01-27T16:30:00",
-    "status": "idle",
-    "lastRunTime": null,
-    "runCount": 0,
-    "target_machine_id": null,
-    "target_app_name": null
-  }
+  "counter": 12,
+  "storage": [
+    {
+      "id": "script_1",
+      "name": "脚本名称",
+      "description": "脚本描述",
+      "path": "<脚本内容文件绝对路径>",
+      "createdAt": "2025-01-27T16:30:00",
+      "updatedAt": "2025-01-27T16:30:00",
+      "lastRunTime": null,
+      "runCount": 0,
+      "target_app_name": null,
+      "last_run_machine_id": null
+    }
+  ]
 }
 ```
 
@@ -61,7 +63,7 @@
 - 创建脚本 → 自动保存
 - 更新脚本 → 自动保存
 - 删除脚本 → 自动保存
-- 更新脚本状态 → 自动保存
+- 运行脚本 → 自动记录 lastRunTime / runCount（不再保存 status）
 
 ### 3. 数据验证
 

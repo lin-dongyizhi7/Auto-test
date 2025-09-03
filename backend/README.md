@@ -74,11 +74,11 @@ API 总览
 
 5. 脚本管理
 - GET `/scripts`：列表
-- GET `/scripts/{id}`：详情
-- POST `/scripts`：创建（支持 `target_machine_id` / `target_app_name`）
+- GET `/scripts/{id}`：详情（包含从文件读取的 `content`）
+- POST `/scripts`：创建（支持 `target_app_name`）
 - PUT `/scripts/{id}`：更新
 - DELETE `/scripts/{id}`：删除
-- POST `/scripts/{id}/run`：运行脚本（后端生成临时文件并调用 Python 执行）
+- POST `/scripts/{id}/run`：运行脚本（Body 可带 `machine_id`，用于记录 `last_run_machine_id`）
 - POST `/scripts/import`：导入 `.py` 脚本（multipart）
 - GET `/scripts/{id}/export`：导出脚本内容
 
