@@ -963,6 +963,10 @@ class TestedMachineCommunicator:
         except Exception as e:
             print(f"与测试服务器 {self.test_server_addr} 通信时发生错误: {str(e)}")
             self._emit_event("server_error", {"test_server_addr": str(self.test_server_addr), "error": str(e)})
+            self.test_server_socket.sendall(json.dumps(response).encode('utf-8'))
+            self.test_server_connected = False
+            self.test_server_socket = None
+            print(f"与测试服务器 {self.test_server_addr} 的连接已断开")
         finally:
             print("Request Handle Done")
 
