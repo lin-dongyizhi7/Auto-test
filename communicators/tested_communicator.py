@@ -2,7 +2,7 @@
 Author: 凛冬已至 2985956026@qq.com
 Date: 2025-07-24 13:25:17
 LastEditors: 凛冬已至 2985956026@qq.com
-LastEditTime: 2025-09-03 07:10:08
+LastEditTime: 2025-09-03 11:59:27
 FilePath: \Auto-test\communicators\tested_communicator.py
 Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
 '''
@@ -410,6 +410,7 @@ class TestedMachineCommunicator:
             connection_data = request.get("data", {})
             server_host = connection_data.get("server_host")
             server_port = connection_data.get("server_port")
+            server_id = connection_data.get("server_id")
             
             if not server_host or not server_port:
                 print(f"连接请求缺少必要信息: server_host={server_host}, server_port={server_port}")
@@ -432,6 +433,7 @@ class TestedMachineCommunicator:
             self.test_server_connection_info = {
                 "host": server_host,
                 "port": server_port,
+                "server_id": server_id,
                 "test_server_addr": test_server_addr
             }
             
@@ -440,17 +442,51 @@ class TestedMachineCommunicator:
                 "type": "connection_response",
                 "success": True,
                 "data": {
+                    "message": "连接已接受"
+                }
+            }
+            test_server_socket.sendall(json.dumps(response).encode('utf-8'))
+            
+            # 发送机器注册请求
+            registration_request = {
+                "type": "machine_registration",
+                "data": {
                     "machine_id": self.machine_id,
                     "machine_info": {
                         "host": self.bind_host,
                         "port": self.bind_port,
                         "platform": "linux",
-                        "timestamp": time.time()
+                        "timestamp": time.time(),
+                        "server_id": server_id
                     }
                 }
             }
-            test_server_socket.sendall(json.dumps(response).encode('utf-8'))
-            self._emit_event("test_server_connected", {"test_server_addr": str(test_server_addr), "server_host": server_host, "server_port": server_port})
+            test_server_socket.sendall(json.dumps(registration_request).encode('utf-8'))
+            print(f"发送机器注册请求: machine_id={self.machine_id}")
+            
+            # 等待注册响应
+            registration_response = test_server_socket.recv(1024).decode('utf-8')
+            if not registration_response:
+                print("未收到机器注册响应")
+                return False
+            
+            registration_result = json.loads(registration_response)
+            if not registration_result.get("success"):
+                print(f"机器注册失败: {registration_result.get('error')}")
+                return False
+            
+            # 更新machine_id（如果服务器生成了新的ID）
+            actual_machine_id = registration_result.get("machine_id", self.machine_id)
+            if actual_machine_id != self.machine_id:
+                print(f"服务器分配了新的机器ID: {actual_machine_id}")
+                self.machine_id = actual_machine_id
+            
+            self._emit_event("test_server_connected", {
+                "test_server_addr": str(test_server_addr), 
+                "server_host": server_host, 
+                "server_port": server_port,
+                "machine_id": self.machine_id
+            })
             
             # 设置测试服务器连接
             self.test_server_socket = test_server_socket
