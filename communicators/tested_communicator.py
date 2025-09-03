@@ -2,7 +2,7 @@
 Author: 凛冬已至 2985956026@qq.com
 Date: 2025-07-24 13:25:17
 LastEditors: 凛冬已至 2985956026@qq.com
-LastEditTime: 2025-09-03 12:34:41
+LastEditTime: 2025-09-03 14:39:06
 FilePath: \Auto-test\communicators\tested_communicator.py
 Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
 '''
@@ -963,6 +963,10 @@ class TestedMachineCommunicator:
         except Exception as e:
             print(f"与测试服务器 {self.test_server_addr} 通信时发生错误: {str(e)}")
             self._emit_event("server_error", {"test_server_addr": str(self.test_server_addr), "error": str(e)})
+            self.test_server_socket.sendall(json.dumps(response).encode('utf-8'))
+            self.test_server_connected = False
+            self.test_server_socket = None
+            print(f"与测试服务器 {self.test_server_addr} 的连接已断开")
         finally:
             print("Request Handle Done")
 
