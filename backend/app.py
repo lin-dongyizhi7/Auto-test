@@ -279,6 +279,73 @@ class ScriptStorageManager:
             script_info.runCount += 1
         
         self._save_data()
+    
+    def import_script(self, file_content: str, filename: str) -> ScriptInfo:
+        """导入脚本文件"""
+        # 检查脚本大小
+        if len(file_content.encode('utf-8')) > config.SCRIPT_MAX_SIZE:
+            raise ValueError(f"脚本内容过大，最大允许 {config.SCRIPT_MAX_SIZE} 字节")
+        
+        # 从文件名提取脚本名称（去掉.py扩展名）
+        script_name = os.path.splitext(filename)[0]
+        
+        self.script_counter += 1
+        script_id = f"script_{self.script_counter}"
+        
+        # 创建脚本内容文件路径
+        script_file_path = os.path.join(self.store_dir, f"{script_id}.json")
+        
+        # 创建脚本信息
+        now = datetime.now().isoformat()
+        script_info = ScriptInfo(
+            id=script_id,
+            name=script_name,
+            description=f"从 {filename} 导入的脚本",
+            content=file_content,
+            path=script_file_path,
+            createdAt=now,
+            updatedAt=now,
+            status="idle",
+            lastRunTime=None,
+            runCount=0,
+            target_machine_id="",
+            target_app_name=""
+        )
+        
+        # 保存脚本内容到文件
+        try:
+            with open(script_file_path, 'w', encoding='utf-8') as f:
+                json.dump({"content": file_content}, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            logger.error(f"保存脚本内容文件失败: {e}")
+            raise ValueError(f"保存脚本内容失败: {str(e)}")
+        
+        # 存储脚本信息
+        self.scripts_storage[script_id] = script_info
+        self._save_data()
+        
+        logger.info(f"成功导入脚本: {script_id} ({script_name})")
+        return script_info
+    
+    def export_script(self, script_id: str) -> str:
+        """导出脚本内容"""
+        if script_id not in self.scripts_storage:
+            raise ValueError(f"脚本 {script_id} 不存在")
+        
+        script_info = self.scripts_storage[script_id]
+        
+        # 从脚本内容文件读取
+        try:
+            if os.path.exists(script_info.path):
+                with open(script_info.path, 'r', encoding='utf-8') as f:
+                    script_data = json.load(f)
+                    return script_data.get('content', '')
+            else:
+                # 如果文件不存在，返回脚本信息中的内容
+                return script_info.content or ''
+        except Exception as e:
+            logger.error(f"读取脚本内容失败: {e}")
+            raise ValueError(f"读取脚本内容失败: {str(e)}")
 
 # 初始化脚本存储管理器（新结构）
 script_manager = ScriptStorageManager(SCRIPT_INFO_FILE, SCRIPTS_STORE_DIR)
@@ -1062,6 +1129,68 @@ async def run_script(script_id: str):
         return OperationResult(
             success=False,
             error=f"运行脚本失败: {str(e)}"
+        )
+
+@app.post("/api/scripts/import", response_model=OperationResult)
+async def import_script(file: UploadFile = File(...)):
+    """导入脚本文件"""
+    try:
+        # 检查文件类型
+        if not file.filename.endswith('.py'):
+            return OperationResult(
+                success=False,
+                error="只支持导入 .py 文件"
+            )
+        
+        # 读取文件内容
+        content = await file.read()
+        file_content = content.decode('utf-8')
+        
+        # 导入脚本
+        script = script_manager.import_script(file_content, file.filename)
+        
+        return OperationResult(
+            success=True,
+            data=script.model_dump(),
+            message=f"脚本 {script.name} 导入成功"
+        )
+        
+    except Exception as e:
+        logger.error(f"导入脚本失败: {e}")
+        return OperationResult(
+            success=False,
+            error=f"导入脚本失败: {str(e)}"
+        )
+
+@app.get("/api/scripts/{script_id}/export")
+async def export_script(script_id: str):
+    """导出脚本文件"""
+    try:
+        # 获取脚本内容
+        script_content = script_manager.export_script(script_id)
+        script_info = script_manager.get_script(script_id)
+        
+        if not script_info:
+            return OperationResult(
+                success=False,
+                error="脚本不存在"
+            )
+        
+        # 创建响应
+        from fastapi.responses import Response
+        return Response(
+            content=script_content,
+            media_type="text/plain",
+            headers={
+                "Content-Disposition": f"attachment; filename={script_info.name}.py"
+            }
+        )
+        
+    except Exception as e:
+        logger.error(f"导出脚本失败: {e}")
+        return OperationResult(
+            success=False,
+            error=f"导出脚本失败: {str(e)}"
         )
 
 # ==================== 事件管理端点 ====================

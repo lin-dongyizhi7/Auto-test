@@ -79,6 +79,10 @@ export const moveToElement = (data: ElementOperation): Promise<ApiResponse> => {
   return request.post('/api/element/move-to', data)
 }
 
+export const dragTo = (data: DragOperation): Promise<ApiResponse> => {
+  return request.post('/api/mouse/drag-to', data)
+}
+
 // 图像操作API
 export const findImage = (data: ImageOperation): Promise<ApiResponse> => {
   return request.post('/api/image/find', data)
@@ -113,6 +117,14 @@ export const getScripts = (): Promise<ApiResponse<{ scripts: ScriptInfo[] }>> =>
 
 export const getScript = (id: string): Promise<ApiResponse<ScriptInfo>> => {
   return request.get(`/api/scripts/${id}`)
+}
+
+export const importScript = (data: File): Promise<ApiResponse> => {
+  return request.post('/api/scripts/import', data)
+}
+
+export const exportScript = (id: string): Promise<ApiResponse<string>> => {
+  return request.get(`/api/scripts/${id}/export`)
 }
 
 export const createScript = (data: CreateScriptRequest): Promise<ApiResponse<ScriptInfo>> => {

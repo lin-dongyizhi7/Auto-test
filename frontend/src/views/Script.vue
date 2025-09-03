@@ -470,8 +470,8 @@ const loadScripts = async () => {
   loading.value = true
   try {
     const response = await getScriptsApi()
-    // 新的API直接返回数据，不需要嵌套访问
-    scripts.value = response.data || []
+    // API返回的数据结构是 { scripts: ScriptInfo[] }
+    scripts.value = response.data?.scripts || []
   } catch (error) {
     ElMessage.error('加载脚本列表失败')
     console.error('Load scripts error:', error)
@@ -489,8 +489,8 @@ const handleSelectionChange = (selection: ScriptInfo[]) => {
   selectedScripts.value = selection
 }
 
-const getStatusType = (status: string) => {
-  const statusMap: Record<string, string> = {
+const getStatusType = (status: string): 'info' | 'warning' | 'success' | 'danger' => {
+  const statusMap: Record<string, 'info' | 'warning' | 'success' | 'danger'> = {
     idle: 'info',
     running: 'warning',
     completed: 'success',
@@ -673,7 +673,7 @@ const onImportScript = async () => {
 const onExportScript = async (script: ScriptInfo) => {
   try {
     const response = await exportScriptApi(script.id)
-    const blob = new Blob([response.data], { type: 'text/plain' })
+    const blob = new Blob([response.data || ''], { type: 'text/plain' })
     const url = window.URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url

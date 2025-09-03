@@ -29,6 +29,7 @@ import {
   doubleClickElement,
   setElementText,
   moveToElement,
+  dragTo,
   findImage,
   clickImage,
   sendHotkey,
@@ -305,7 +306,7 @@ export const useOperationStore = defineStore('operation', () => {
     }
 
     try {
-      const response = await inputText(operation)
+      const response = await typeText(operation)
       if (response.success) {
         addLog(`文本输入成功: ${operation.text}`, 'success')
         return true
