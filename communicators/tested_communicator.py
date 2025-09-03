@@ -2,7 +2,7 @@
 Author: 凛冬已至 2985956026@qq.com
 Date: 2025-07-24 13:25:17
 LastEditors: 凛冬已至 2985956026@qq.com
-LastEditTime: 2025-09-03 12:34:59
+LastEditTime: 2025-09-03 13:13:31
 FilePath: \Auto-test\communicators\tested_communicator.py
 Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
 '''
@@ -497,35 +497,11 @@ class TestedMachineCommunicator:
             self.test_server_thread = threading.Thread(target=self._handle_regular_request, daemon=True)
             self.test_server_thread.start()
             
-            # 将已注册的应用同步到测试服务器
-            try:
-                for app_name, app in self.apps.items():
-                    self._register_app_to_server(app_name, app.get("info", {}))
-            except Exception as e:
-                print(f"同步已注册应用到测试服务器失败: {str(e)}")
-            
             return True
             
         except Exception as e:
             print(f"处理测试服务器连接请求失败: {str(e)}")
             return False
-
-    def _register_app_to_server(self, app_name: str, app_info: Dict) -> None:
-        """将应用注册到测试服务器（使用现有长连接，忽略响应）"""
-        if not self.test_server_connected:
-            return
-        try:
-            payload = {
-                "type": "register_app",
-                "data": {
-                    "app_name": app_name,
-                    "app_info": app_info or {}
-                }
-            }
-            with self.test_server_send_lock:
-                self.test_server_socket.sendall(json.dumps(payload).encode('utf-8'))
-        except Exception as e:
-            print(f"向测试服务器注册应用失败: {str(e)}")
 
     def _handle_screenshot_request(self, app_name: str, region: Optional[List[int]] = None) -> Dict:
         """处理截图请求"""
