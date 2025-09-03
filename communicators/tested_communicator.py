@@ -2,7 +2,7 @@
 Author: 凛冬已至 2985956026@qq.com
 Date: 2025-07-24 13:25:17
 LastEditors: 凛冬已至 2985956026@qq.com
-LastEditTime: 2025-09-03 11:03:38
+LastEditTime: 2025-09-03 12:34:41
 FilePath: \Auto-test\communicators\tested_communicator.py
 Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
 '''
@@ -970,7 +970,11 @@ class TestedMachineCommunicator:
                     print(f"收到 {self.test_server_addr} 的断开连接请求")
                     response = {"success": True, "message": "连接已断开"}
                     self.test_server_socket.sendall(json.dumps(response).encode('utf-8'))
-                    break
+                    self.test_server_connected = False
+                    self.test_server_socket = None
+                    print(f"与测试服务器 {self.test_server_addr} 的连接已断开")
+                    self._emit_event("test_server_disconnected", {"test_server_addr": str(self.test_server_addr)})
+                    return
 
                 # 发送响应
                 self.test_server_socket.sendall(json.dumps(response).encode('utf-8'))
@@ -984,10 +988,7 @@ class TestedMachineCommunicator:
             print(f"与测试服务器 {self.test_server_addr} 通信时发生错误: {str(e)}")
             self._emit_event("server_error", {"test_server_addr": str(self.test_server_addr), "error": str(e)})
         finally:
-            self.test_server_connected = False
-            self.test_server_socket = None
-            print(f"与测试服务器 {self.test_server_addr} 的连接已断开")
-            self._emit_event("test_server_disconnected", {"test_server_addr": str(self.test_server_addr)})
+            print("Request Handle Done")
 
     def get_test_server_status(self) -> Dict:
         """获取测试服务器连接状态"""
