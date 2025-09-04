@@ -696,8 +696,9 @@ class MultiMachineOperation:
         - 递归执行 steps，父步骤等待所有子步骤完成
         - 任一步失败将停止并返回错误
         """
-        target_machine_id = script.get("target_machine_id")
+        target_machine_id = self.current_machine_id
         target_app_name = script.get("target_app_name")
+        self.logger.info(f"执行脚本: {target_machine_id}/{target_app_name}")
         if target_machine_id and target_app_name:
             ok = self.set_target(target_machine_id, target_app_name)
             if not ok:

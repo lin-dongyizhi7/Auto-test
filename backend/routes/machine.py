@@ -164,6 +164,24 @@ class MachineInfoManager:
             if machine["host"] == host and machine["port"] == port:
                 return machine
         return None
+    
+    def reset_all_machine_status(self) -> int:
+        """重置所有机器的连接状态为未连接"""
+        data = self._load_data()
+        reset_count = 0
+        
+        for machine in data["storage"]:
+            if machine["status"] != "disconnected":
+                machine["status"] = "disconnected"
+                machine["updated_at"] = datetime.now().isoformat()
+                machine["last_disconnected_at"] = datetime.now().isoformat()
+                reset_count += 1
+        
+        if reset_count > 0:
+            self._save_data(data)
+            logger.info(f"重置了 {reset_count} 个机器的连接状态为未连接")
+        
+        return reset_count
 
 # 创建机器管理器实例
 machine_manager = MachineInfoManager()

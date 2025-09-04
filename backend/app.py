@@ -29,7 +29,7 @@ from config import config
 from routes.server import router as server_router, set_global_state as set_server_state
 from routes.machine import router as machine_router, set_global_state as set_machine_state
 from routes.operation import router as operation_router, set_global_state as set_operation_state
-from routes.script import router as script_router
+from routes.script import router as script_router, set_global_state as set_script_state
 
 # 配置日志
 logging.basicConfig(
@@ -54,6 +54,14 @@ async def lifespan(app: FastAPI):
     # 启动时处理
     logger.info("后端应用启动")
     
+    # 重置所有机器的连接状态为未连接
+    try:
+        from routes.machine import machine_manager
+        reset_count = machine_manager.reset_all_machine_status()
+        logger.info(f"启动时重置了 {reset_count} 个机器的连接状态")
+    except Exception as e:
+        logger.warning(f"重置机器状态失败: {e}")
+    
     # 默认启动测试服务器
     try:
         communicator = TestMachineCommunicator(
@@ -72,6 +80,7 @@ async def lifespan(app: FastAPI):
         set_server_state(communicator, operation, is_running)
         set_machine_state(communicator, operation, is_running)
         set_operation_state(communicator, operation, is_running)
+        set_script_state(communicator, operation, is_running)
         
         logger.info("测试服务器已默认启动，监听端口: 8888")
         

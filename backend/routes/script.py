@@ -14,12 +14,30 @@ from fastapi import APIRouter, HTTPException, UploadFile, File
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
+from communicators.test_communicator import TestMachineCommunicator
+from communicators.operation_multi_machine import MultiMachineOperation
 from config import config
 
 logger = logging.getLogger("backend.routes.script")
 
 # 创建路由器
 router = APIRouter(prefix="/api/scripts", tags=["脚本管理"])
+
+# 全局状态（这些变量将在主应用中初始化）
+communicator: Optional[TestMachineCommunicator] = None
+operation: Optional[MultiMachineOperation] = None
+is_running = False
+current_machine_id: Optional[str] = None
+current_app_name: Optional[str] = None
+
+def set_global_state(comm, op, running, machine_id=None, app_name=None):
+    """设置全局状态变量"""
+    global communicator, operation, is_running, current_machine_id, current_app_name
+    communicator = comm
+    operation = op
+    is_running = running
+    current_machine_id = machine_id
+    current_app_name = app_name
 
 class OperationResult(BaseModel):
     success: bool
@@ -390,6 +408,8 @@ async def delete_script(script_id: str):
 @router.post("/{script_id}/run", response_model=OperationResult)
 async def run_script(script_id: str, machine_id: Optional[str] = None):
     """运行脚本"""
+    global operation
+
     try:
         script = script_manager.get_script(script_id)
         if not script:
@@ -408,6 +428,8 @@ async def run_script(script_id: str, machine_id: Optional[str] = None):
             script_manager._save_data()
         
         # 这里应该实现脚本执行逻辑
+        operation.run_script_from_file(script.path)
+
         # 暂时返回成功
         return OperationResult(
             success=True,
