@@ -2,7 +2,7 @@
 Author: 凛冬已至 2985956026@qq.com
 Date: 2025-07-24 13:25:17
 LastEditors: 凛冬已至 2985956026@qq.com
-LastEditTime: 2025-09-04 10:17:45
+LastEditTime: 2025-09-04 13:52:45
 FilePath: \Auto-test\communicators\tested_communicator.py
 Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
 '''
@@ -165,6 +165,7 @@ class TestedMachineCommunicator:
                 "data": {
                     "machine_id": self.machine_id,
                     "machine_info": {
+                        "address": (self.bind_host, self.bind_port),
                         "host": self.bind_host,
                         "port": self.bind_port,
                         "platform": "linux",

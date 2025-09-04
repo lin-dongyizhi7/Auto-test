@@ -169,10 +169,14 @@ export const deleteMachineInfo = (machineId: string): Promise<ApiResponse> => {
 }
 
 // 机器连接管理API
-export const connectToMachine = (machineId: string): Promise<ApiResponse> => {
-  return request.post('/api/machine/connect', { machine_id: machineId })
+export const connectToMachine = (host: string, port: number): Promise<ApiResponse> => {
+  return request.post('/api/machine/connect', { host, port })
+} 
+
+export const connectToMachineById = (machineId: string): Promise<ApiResponse> => {
+  return request.post('/api/machine/connectById', { machine_id: machineId })
 }
 
-export const disconnectMachine = (machineId: string): Promise<ApiResponse> => {
-  return request.post('/api/machine/disconnect', { machine_id: machineId })
+export const disconnectMachineById = (machineId: string): Promise<ApiResponse> => {
+  return request.post('/api/machine/disconnectById', { machine_id: machineId })
 } 

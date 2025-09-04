@@ -42,7 +42,8 @@ import {
   updateMachineInfo,
   deleteMachineInfo,
   connectToMachine,
-  disconnectMachine
+  connectToMachineById,
+  disconnectMachineById,
 } from '@/api/operation'
 
 export const useOperationStore = defineStore('operation', () => {
@@ -615,9 +616,28 @@ export const useOperationStore = defineStore('operation', () => {
   }
 
   // 机器连接管理
-  const connectToTargetMachine = async (machineId: string) => {
+  const connectToTargetMachine = async (host: string, port: number) => {
     try {
-      const response = await connectToMachine(machineId)
+      const response = await connectToMachine(host, port)
+      if (response.success) {
+        addLog(`成功连接到机器 ${host}:${port}`, 'success')
+        // 连接成功后刷新机器列表和机器信息
+        await refreshMachines()
+        await refreshMachineInfo()
+        return true
+      } else {
+        addLog(`连接目标机器失败: ${response.error}`, 'error')
+        return false
+      }
+    } catch (error) {
+      addLog(`连接目标机器异常: ${error}`, 'error')
+      return false
+    }
+  }
+
+  const connectToTargetMachineById = async (machineId: string) => {
+    try {
+      const response = await connectToMachineById(machineId)
       if (response.success) {
         addLog(`成功连接到机器 ${machineId}`, 'success')
         // 连接成功后刷新机器列表和机器信息
@@ -634,9 +654,9 @@ export const useOperationStore = defineStore('operation', () => {
     }
   }
 
-  const disconnectTargetMachine = async (machineId: string) => {
+  const disconnectTargetMachineById = async (machineId: string) => {
     try {
-      const response = await disconnectMachine(machineId)
+      const response = await disconnectMachineById(machineId)
       if (response.success) {
         addLog(`成功断开与机器 ${machineId} 的连接`, 'success')
         // 断开连接后刷新机器列表和机器信息
@@ -725,7 +745,8 @@ export const useOperationStore = defineStore('operation', () => {
 
     // 机器连接管理
     connectToTargetMachine,
-    disconnectTargetMachine,
+    connectToTargetMachineById,
+    disconnectTargetMachineById,
 
     // 日志管理
     addLog,

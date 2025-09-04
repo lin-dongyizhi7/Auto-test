@@ -496,8 +496,8 @@ async def delete_machine_info(machine_id: str):
             error=f"删除机器信息失败: {str(e)}"
         )
 
-@router.post("/machine/connect", response_model=OperationResult)
-async def connect_to_machine(request: MachineConnectRequest):
+@router.post("/machine/connectById", response_model=OperationResult)
+async def connect_to_machine_by_id(request: MachineConnectRequest):
     """连接到指定机器"""
     global communicator
     
@@ -517,7 +517,7 @@ async def connect_to_machine(request: MachineConnectRequest):
             )
         
         # 连接到机器（使用固定端口8888）
-        success = communicator.connect_to_machine(machine_info["host"], 8888)
+        success = communicator.connect_to_machine(request.machine_id, machine_info["host"], 8888)
         
         if success:
             # 更新机器状态
@@ -543,8 +543,8 @@ async def connect_to_machine(request: MachineConnectRequest):
             error=f"连接失败: {str(e)}"
         )
 
-@router.post("/machine/disconnect", response_model=OperationResult)
-async def disconnect_machine(request: MachineDisconnectRequest):
+@router.post("/machine/disconnectById", response_model=OperationResult)
+async def disconnect_machine_by_id(request: MachineDisconnectRequest):
     """断开与指定机器的连接"""
     global communicator
     

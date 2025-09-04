@@ -108,9 +108,11 @@
             <div class="machine-meta">
               <span>地址：{{ m.host }}:{{ m.port }}</span>
               <span>ID：{{ m.id }}</span>
+              <span>应用数：{{ m.apps_count || 0 }}</span>
             </div>
             <div class="machine-info">
               <span v-if="m.description">描述：{{ m.description }}</span>
+              <span v-if="m.connected_at">连接时间：{{ new Date(m.connected_at * 1000).toLocaleString() }}</span>
               <span v-if="m.last_connected_at">最后连接：{{ new Date(m.last_connected_at).toLocaleString() }}</span>
               <span v-if="m.connection_count">连接次数：{{ m.connection_count }}</span>
             </div>
@@ -313,6 +315,15 @@ const createConnection = async () => {
     
     if (addSuccess) {
       ElMessage.success(`机器信息已添加: ${machineName}`)
+      const success = await operationStore.connectToTargetMachine(
+        targetMachineIP.value,
+        targetMachinePort.value
+      )
+      if (success) {
+        ElMessage.success(`成功连接到目标机器 ${targetMachineIP.value}:${targetMachinePort.value}`)
+      } else {
+        ElMessage.error(`连接失败`)
+      }
       connectionDialogVisible.value = false
       // 清空输入
       targetMachineIP.value = ''
@@ -365,7 +376,7 @@ const handleRefreshStatus = async () => {
 const handleConnectMachine = async (machineId: string) => {
   try {
     connectingMachine.value = machineId
-    const success = await operationStore.connectToTargetMachine(machineId)
+    const success = await operationStore.connectToTargetMachineById(machineId)
     
     if (success) {
       ElMessage.success(`成功连接到机器 ${machineId}`)
@@ -474,7 +485,7 @@ onMounted(async () => {
   .machines-overview-card { margin-bottom: 20px; }
   .machine-card { 
     cursor: pointer; 
-    width: 300px;
+    width: 320px;
     transition: all 0.3s ease;
     
     &:hover {

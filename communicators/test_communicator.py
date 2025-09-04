@@ -78,76 +78,12 @@ class TestMachineCommunicator:
             self.event_thread = threading.Thread(target=self._event_processor, daemon=True)
             self.event_thread.start()
             
-            # 启动服务器监听线程
-            self.server_thread = threading.Thread(target=self._accept_connections, daemon=True)
-            self.server_thread.start()
-            
         except Exception as e:
             raise RuntimeError(f"启动测试服务器失败: {str(e)}")
     
-    def _accept_connections(self) -> None:
-        """接受多机器连接"""
-        while self.is_running:
-            try:
-                client_socket, client_addr = self.server_socket.accept()
-                print(f"新机器连接: {client_addr}")
-                
-                # 为每个连接创建处理线程
-                client_thread = threading.Thread(
-                    target=self._handle_machine_connection,
-                    args=(client_socket, client_addr),
-                    daemon=True
-                )
-                client_thread.start()
-                
-            except Exception as e:
-                if self.is_running:
-                    print(f"接受连接时发生错误: {str(e)}")
-    
-    def _handle_machine_connection(self, client_socket: socket.socket, client_addr: tuple) -> None:
+    def _handle_machine_connection(self, client_socket: socket.socket, client_addr: tuple, machine_id: str) -> None:
         """处理单个机器连接（被动连接模式）"""
-        machine_id = None
         try:
-            # 等待机器发送注册信息
-            data = client_socket.recv(1024).decode('utf-8')
-            if not data:
-                return
-                
-            print(f"收到来自 {client_addr} 的数据: {data}")
-            register_info = json.loads(data)
-            machine_id = register_info.get("machine_id")
-            machine_info = register_info.get("machine_info", {})
-            
-            if not machine_id:
-                print(f"机器 {client_addr} 未提供有效的machine_id")
-                return
-            
-            # 注册机器
-            self.machines[machine_id] = {
-                "address": client_addr,
-                "info": machine_info,
-                "connected_at": time.time(),
-                "status": "connected",
-                "last_seen": time.time()
-            }
-            self.connections[machine_id] = client_socket
-            
-            # 发送注册成功响应
-            response = {"success": True, "message": "机器注册成功"}
-            client_socket.sendall(json.dumps(response).encode('utf-8'))
-            
-            # 发布机器连接事件
-            self._publish_event(Event(
-                type=EventType.MACHINE_CONNECTED,
-                machine_id=machine_id,
-                app_name=None,
-                timestamp=time.time(),
-                data={"address": client_addr, "info": machine_info},
-                source_machine=machine_id
-            ))
-            
-            print(f"机器 {machine_id} 注册成功，地址: {client_addr}")
-            
             # 保持连接，处理请求
             while self.is_running and machine_id in self.connections:
                 try:
@@ -244,7 +180,7 @@ class TestMachineCommunicator:
             # 启动处理线程
             client_thread = threading.Thread(
                 target=self._handle_machine_connection,
-                args=(client_socket, (host, port)),
+                args=(client_socket, (host, port), actual_machine_id),
                 daemon=True
             )
             client_thread.start()
@@ -310,9 +246,13 @@ class TestMachineCommunicator:
             
             # 检查machine_id是否已存在
             if requested_machine_id and requested_machine_id in self.machines:
-                # 如果请求的ID已存在，生成新的ID
-                actual_machine_id = self._generate_unique_machine_id()
-                print(f"机器ID {requested_machine_id} 已存在，生成新ID: {actual_machine_id}")
+                if self.machines['requested_machine_id']['address'] == machine_info['address']:
+                    actual_machine_id = requested_machine_id
+                    print(f"该机器已注册，不需要重新注册: {actual_machine_id}")
+                else:
+                    # 请求的ID已存在，但地址不同，生成新的ID
+                    actual_machine_id = self._generate_unique_machine_id()
+                    print(f"机器ID {requested_machine_id} 已存在，生成新ID: {actual_machine_id}")
             elif requested_machine_id:
                 # 使用请求的ID
                 actual_machine_id = requested_machine_id
