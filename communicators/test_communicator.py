@@ -58,6 +58,8 @@ class TestMachineCommunicator:
         # 线程管理
         self.server_thread = None
         self.event_thread = None
+        self.housekeeping_thread = None
+        self._housekeeping_stop = False
         
         # 连接状态监控
         self.connection_status = {}
@@ -77,6 +79,11 @@ class TestMachineCommunicator:
             # 启动事件处理线程
             self.event_thread = threading.Thread(target=self._event_processor, daemon=True)
             self.event_thread.start()
+            
+            # 启动保洁线程：定期清理超时的非活跃连接
+            self._housekeeping_stop = False
+            self.housekeeping_thread = threading.Thread(target=self._housekeeping_loop, daemon=True)
+            self.housekeeping_thread.start()
             
         except Exception as e:
             raise RuntimeError(f"启动测试服务器失败: {str(e)}")
@@ -103,8 +110,13 @@ class TestMachineCommunicator:
                     error_msg = {"success": False, "error": "无效的JSON格式"}
                     client_socket.sendall(json.dumps(error_msg).encode('utf-8'))
                 except Exception as e:
-                    error_msg = {"success": False, "error": f"处理请求失败: {str(e)}"}
-                    client_socket.sendall(json.dumps(error_msg).encode('utf-8'))
+                    # 网络异常/对端断开，尽量回应一次后中断循环
+                    try:
+                        error_msg = {"success": False, "error": f"处理请求失败: {str(e)}"}
+                        client_socket.sendall(json.dumps(error_msg).encode('utf-8'))
+                    except Exception:
+                        pass
+                    break
                     
         except Exception as e:
             print(f"处理机器 {machine_id} 连接时发生错误: {str(e)}")
@@ -213,29 +225,30 @@ class TestMachineCommunicator:
         request_type = request.get("type")
         
         if request_type == "machine_registration":
-            return self._handle_machine_registration(None, request)
+            responseData = self._handle_machine_registration(None, request)
         elif request_type == "register_app":
-            return self._handle_app_registration(machine_id, request)
+            responseData =  self._handle_app_registration(machine_id, request)
         elif request_type == "get_screenshot":
-            return self._handle_screenshot_request(machine_id, request)
+            responseData =  self._handle_screenshot_request(machine_id, request)
         elif request_type == "get_element":
-            return self._handle_element_request(machine_id, request)
+            responseData =  self._handle_element_request(machine_id, request)
         elif request_type == "exec_commands":
-            return self._handle_command_execution(machine_id, request)
+            responseData =  self._handle_command_execution(machine_id, request)
         elif request_type == "subscribe_events":
-            return self._handle_event_subscription(machine_id, request)
+            responseData =  self._handle_event_subscription(machine_id, request)
         elif request_type == "unsubscribe_events":
-            return self._handle_event_unsubscription(machine_id, request)
+            responseData =  self._handle_event_unsubscription(machine_id, request)
         elif request_type == "get_machines":
-            return self._handle_get_machines_request()
+            responseData =  self._handle_get_machines_request()
         elif request_type == "get_apps":
-            return self._handle_get_apps_request()
+            responseData =  self._handle_get_apps_request()
         elif request_type == "sync_event":
-            return self._handle_event_sync(machine_id, request)
+            responseData =  self._handle_event_sync(machine_id, request)
         elif request_type == "heartbeat":
-            return self._handle_heartbeat(machine_id, request)
+            responseData =  self._handle_heartbeat(machine_id, request)
         else:
-            return {"success": False, "error": f"未知请求类型: {request_type}"}
+            responseData =  {"success": False, "error": f"未知请求类型: {request_type}"}
+        return {"type": f'{request_type}_response', "data": responseData}
     
     def _handle_machine_registration(self, client_socket: socket.socket, request: Dict) -> Dict:
         """处理机器注册请求"""
@@ -496,6 +509,11 @@ class TestMachineCommunicator:
             return json.loads(response_data)
             
         except Exception as e:
+            # 视为意外断开，立即清理该机器连接
+            try:
+                self._disconnect_machine(machine_id)
+            except Exception:
+                pass
             return {"success": False, "error": f"转发请求失败: {str(e)}"}
     
     def _publish_event(self, event: Event) -> None:
@@ -705,6 +723,14 @@ class TestMachineCommunicator:
         """停止测试服务器"""
         self.is_running = False
         
+        # 停止保洁线程
+        try:
+            self._housekeeping_stop = True
+            if self.housekeeping_thread and self.housekeeping_thread.is_alive():
+                self.housekeeping_thread.join(timeout=2)
+        except Exception:
+            pass
+        
         # 关闭所有连接
         for machine_id in list(self.connections.keys()):
             self._disconnect_machine(machine_id)
@@ -714,6 +740,17 @@ class TestMachineCommunicator:
             self.server_socket.close()
         
         print("测试服务器已停止")
+
+    def _housekeeping_loop(self, interval_seconds: int = 5, timeout_seconds: int = 300) -> None:
+        """后台保洁线程：周期清理超时非活跃连接"""
+        while not self._housekeeping_stop and self.is_running:
+            try:
+                cleaned = self.cleanup_inactive_connections(timeout_seconds=timeout_seconds)
+                if cleaned:
+                    print(f"保洁清理了 {cleaned} 个超时连接")
+            except Exception:
+                pass
+            time.sleep(interval_seconds)
 
 # 兼容性类，保持向后兼容
 class SingleMachineCommunicator:

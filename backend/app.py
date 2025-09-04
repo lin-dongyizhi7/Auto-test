@@ -11,6 +11,8 @@
 import os
 import sys
 import logging
+import threading
+import time
 from typing import Optional
 from datetime import datetime
 from contextlib import asynccontextmanager
@@ -44,12 +46,68 @@ operation: Optional[MultiMachineOperation] = None
 is_running = False
 current_machine_id: Optional[str] = None
 current_app_name: Optional[str] = None
+_monitor_thread: Optional[threading.Thread] = None
+_monitor_stop_flag: bool = False
+
+def _connection_monitor_loop(get_communicator, get_machine_manager, interval_seconds: int = 3) -> None:
+    """后台线程：定期同步机器连接状态到 machine_info.json
+
+    逻辑：
+    - 从 communicator 读取当前已连接机器的地址集合
+    - 遍历 machine_info 中的所有机器，按 (host, port) 是否在连接集合内，更新状态
+    - 仅在状态变更时写入，减少 IO
+    """
+    global _monitor_stop_flag
+    while not _monitor_stop_flag:
+        try:
+            comm = get_communicator()
+            machine_manager = get_machine_manager()
+            if not comm or not machine_manager:
+                time.sleep(interval_seconds)
+                continue
+
+            # 构建已连接地址集合
+            connected_addresses = set()
+            try:
+                for mid, m in getattr(comm, "machines", {}).items():
+                    if m.get("status") == "connected" and isinstance(m.get("address"), tuple):
+                        connected_addresses.add(m["address"])  # (host, port)
+            except Exception:
+                connected_addresses = set()
+
+            # 遍历已登记的机器，按地址判断是否连接
+            try:
+                machines = machine_manager.get_all_machines()
+            except Exception:
+                machines = []
+
+            for machine in machines:
+                host = machine.get("host")
+                port = machine.get("port")
+                current_status = machine.get("status", "disconnected")
+                is_connected_now = (host, port) in connected_addresses
+                target_status = "connected" if is_connected_now else "disconnected"
+
+                if target_status != current_status:
+                    try:
+                        machine_manager.update_machine_status(machine.get("id"), target_status)
+                        logging.getLogger("backend.app").info(
+                            f"监控更新机器状态: {machine.get('id')} ({host}:{port}) -> {target_status}"
+                        )
+                    except Exception:
+                        pass
+
+        except Exception as _:
+            # 防御式：任何异常不应终止监控线程
+            pass
+        finally:
+            time.sleep(interval_seconds)
 
 # 生命周期事件处理
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """应用生命周期管理"""
-    global communicator, operation, is_running
+    global communicator, operation, is_running, _monitor_stop_flag, _monitor_thread
     
     # 启动时处理
     logger.info("后端应用启动")
@@ -83,6 +141,24 @@ async def lifespan(app: FastAPI):
         set_script_state(communicator, operation, is_running)
         
         logger.info("测试服务器已默认启动，监听端口: 8888")
+
+        # 启动后台监控线程：同步断连状态到 machine_info
+        try:
+            from routes.machine import machine_manager as _machine_manager_singleton
+            def _get_comm():
+                return communicator
+            def _get_mm():
+                return _machine_manager_singleton
+            _monitor_stop_flag = False
+            _monitor_thread = threading.Thread(
+                target=_connection_monitor_loop,
+                args=(_get_comm, _get_mm, 3),
+                daemon=True
+            )
+            _monitor_thread.start()
+            logger.info("机器连接状态监控线程已启动")
+        except Exception as e:
+            logger.warning(f"启动连接监控线程失败: {e}")
         
     except Exception as e:
         logger.error(f"默认启动测试服务器失败: {e}")
@@ -92,6 +168,13 @@ async def lifespan(app: FastAPI):
     
     # 关闭时处理
     logger.info("后端应用关闭")
+    # 停止监控线程
+    try:
+        _monitor_stop_flag = True
+        if _monitor_thread and _monitor_thread.is_alive():
+            _monitor_thread.join(timeout=2)
+    except Exception:
+        pass
     
     # 清理资源
     if operation:
