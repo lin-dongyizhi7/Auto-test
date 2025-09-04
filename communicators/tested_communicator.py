@@ -2,7 +2,7 @@
 Author: 凛冬已至 2985956026@qq.com
 Date: 2025-07-24 13:25:17
 LastEditors: 凛冬已至 2985956026@qq.com
-LastEditTime: 2025-09-04 08:42:31
+LastEditTime: 2025-09-04 09:53:28
 FilePath: \Auto-test\communicators\tested_communicator.py
 Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
 '''
@@ -22,10 +22,6 @@ import argparse
 from typing import Dict, List, Optional, Set
 from collections import OrderedDict
 from .machine_operator import MachineOperator
-
-
-
-
 
 
 class TestedMachineCommunicator:
@@ -557,6 +553,7 @@ def interactive_setup():
             port_input = input("请输入监听端口 (默认: 8888): ").strip()
             if not port_input:
                 port = 8888
+                break
             else:
                 port = int(port_input)
                 if 1 <= port <= 65535:
