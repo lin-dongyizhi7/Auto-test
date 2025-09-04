@@ -2,7 +2,7 @@
 Author: 凛冬已至 2985956026@qq.com
 Date: 2025-07-24 13:25:17
 LastEditors: 凛冬已至 2985956026@qq.com
-LastEditTime: 2025-09-04 16:07:23
+LastEditTime: 2025-09-04 16:16:34
 FilePath: \Auto-test\communicators\tested_communicator.py
 Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
 '''
@@ -519,8 +519,9 @@ class TestedMachineCommunicator:
                     print(f"{request['type']} 收到 {self.test_server_addr} 的响应: {response}")
 
                 # 发送响应
-                self.test_server_socket.sendall(json.dumps(response).encode('utf-8'))
-                self._emit_event("client_response", {"from": str(self.test_server_addr), "ok": bool(response.get("success"))})
+                if not request["type"].endswith("_response"):
+                    self.test_server_socket.sendall(json.dumps(response).encode('utf-8'))
+                    self._emit_event("client_response", {"from": str(self.test_server_addr), "ok": bool(response.get("success"))})
 
         except json.JSONDecodeError:
             error_msg = {"success": False, "error": "无效的JSON格式"}
