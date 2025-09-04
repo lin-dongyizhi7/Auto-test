@@ -2,7 +2,7 @@
 Author: 凛冬已至 2985956026@qq.com
 Date: 2025-07-24 13:25:17
 LastEditors: 凛冬已至 2985956026@qq.com
-LastEditTime: 2025-09-03 13:13:31
+LastEditTime: 2025-09-04 10:19:14
 FilePath: \Auto-test\communicators\tested_communicator.py
 Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
 '''
@@ -209,6 +209,10 @@ class TestedMachineCommunicator:
             self.test_server_thread = threading.Thread(target=self._handle_regular_request, daemon=True)
             self.test_server_thread.start()
             
+            # 机器注册成功后，同步已注册的应用到测试服务器
+            print("机器注册成功，开始同步已注册的应用...")
+            self._sync_registered_apps_to_server()
+            
             return True
             
         except Exception as e:
@@ -318,6 +322,37 @@ class TestedMachineCommunicator:
             self.test_server_socket.sendall(json.dumps(event_data).encode('utf-8'))
         except Exception as e:
             print(f"同步事件到服务器失败: {str(e)}")
+
+    def _sync_registered_apps_to_server(self) -> None:
+        """将已注册的应用同步到测试服务器"""
+        if not self.test_server_connected:
+            return
+            
+        try:
+            # 获取所有已注册的应用
+            for app_name, app_info in self.machine_operator.apps.items():
+                # 向测试服务器发送应用注册请求
+                app_registration_request = {
+                    "type": "register_app",
+                    "data": {
+                        "app_name": app_name,
+                        "app_info": app_info.get("info", {}),
+                        "machine_id": self.machine_id
+                    }
+                }
+                self.test_server_socket.sendall(json.dumps(app_registration_request).encode('utf-8'))
+                print(f"同步应用 {app_name} 到测试服务器")
+                
+                # 等待响应（可选，如果需要确认）
+                response = self.test_server_socket.recv(1024).decode('utf-8')
+                response_data = json.loads(response)
+                if response_data.get("success"):
+                    print(f"应用 {app_name} 同步成功")
+                else:
+                    print(f"应用 {app_name} 同步失败: {response_data.get('error')}")
+                
+        except Exception as e:
+            print(f"同步已注册应用到服务器失败: {str(e)}")
 
     def _emit_event(self, event_type: str, data: Dict = None) -> None:
         """向本地UI事件队列上报事件"""
@@ -549,16 +584,19 @@ def interactive_setup():
     
     # 获取监听端口
     while True:
-        port_input = input("请输入监听端口 (默认: 8888): ").strip()
-        if not port_input:
-            port = 8888
-            break
-        else:
-            port = int(port_input)
-            if 1 <= port <= 65535:
+        try:
+            port_input = input("请输入监听端口 (默认: 8888): ").strip()
+            if not port_input:
+                port = 8888
                 break
             else:
-                print("❌ 端口号必须在 1-65535 范围内")
+                port = int(port_input)
+                if 1 <= port <= 65535:
+                    break
+                else:
+                    print("❌ 端口号必须在 1-65535 范围内")
+        except ValueError:
+            print("❌ 请输入有效的端口号")
     
     # 获取机器ID
     machine_id = input("请输入机器ID (默认: test_machine_001): ").strip()
