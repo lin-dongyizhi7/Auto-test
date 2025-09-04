@@ -41,6 +41,7 @@ import {
   addMachineInfo,
   updateMachineInfo,
   deleteMachineInfo,
+  batchDeleteMachineInfo,
   connectToMachine,
   connectToMachineById,
   disconnectMachineById,
@@ -615,6 +616,24 @@ export const useOperationStore = defineStore('operation', () => {
     }
   }
 
+  const batchDeleteMachineInfoData = async (machineIds: string[]) => {
+    try {
+      const response = await batchDeleteMachineInfo(machineIds)
+      if (response.success) {
+        const data: any = response.data || {}
+        addLog(`批量删除完成: 删除 ${data.deleted?.length || 0} 台，跳过已连接 ${data.skipped_connected?.length || 0} 台，不存在 ${data.not_found?.length || 0} 台`, 'success')
+        await refreshMachineInfo()
+        return true
+      } else {
+        addLog(`批量删除机器信息失败: ${response.error}`, 'error')
+        return false
+      }
+    } catch (error) {
+      addLog(`批量删除机器信息异常: ${error}`, 'error')
+      return false
+    }
+  }
+
   // 机器连接管理
   const connectToTargetMachine = async (host: string, port: number) => {
     try {
@@ -742,6 +761,7 @@ export const useOperationStore = defineStore('operation', () => {
     addNewMachineInfo,
     updateMachineInfoData,
     deleteMachineInfoData,
+    batchDeleteMachineInfoData,
 
     // 机器连接管理
     connectToTargetMachine,

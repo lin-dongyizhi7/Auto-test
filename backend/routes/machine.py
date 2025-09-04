@@ -35,6 +35,8 @@ class MachineInfo:
         self.last_connected_at = None
         self.last_disconnected_at = None
         self.connection_count = 0
+        # 被测试机器注册后返回的真实注册ID（由测试服务器分配）
+        self.registered_id = None
 
 class MachineInfoManager:
     """机器信息管理器"""
@@ -141,6 +143,19 @@ class MachineInfoManager:
                 logger.info(f"更新机器信息: {machine_id}")
                 return True
         
+        logger.warning(f"未找到机器: {machine_id}")
+        return False
+
+    def update_machine_registered_id(self, machine_id: str, registered_id: str) -> bool:
+        """更新机器的注册ID（测试服务器分配的machine_id）"""
+        data = self._load_data()
+        for machine in data["storage"]:
+            if machine["id"] == machine_id:
+                machine["registered_id"] = registered_id
+                machine["updated_at"] = datetime.now().isoformat()
+                self._save_data(data)
+                logger.info(f"更新机器注册ID: {machine_id} -> {registered_id}")
+                return True
         logger.warning(f"未找到机器: {machine_id}")
         return False
     
@@ -281,13 +296,23 @@ async def connect_to_machine(request: dict):
                 error="主机地址不能为空"
             )
         
-        # 生成机器ID
-        machine_id = f"machine_{host}_{port}"
+        # 生成临时机器ID用于握手（最终以注册返回ID为准）
+        temp_machine_id = f"machine_{host}_{port}"
         
         # 尝试连接到目标机器
-        result = communicator.connect_to_machine(machine_id, host, port)
+        result = communicator.connect_to_machine(temp_machine_id, host, port)
         
         if result.get("success"):
+            # 记录注册返回的ID到machine_info.registered_id
+            actual_id = result.get("machine_id")
+            try:
+                mi = machine_manager.find_machine_by_address(host, port)
+                if mi and actual_id:
+                    machine_manager.update_machine_registered_id(mi["id"], actual_id)
+                if mi:
+                    machine_manager.update_machine_status(mi["id"], "connected")
+            except Exception as e:
+                logger.warning(f"更新registered_id失败: {e}")
             logger.info(f"成功连接到目标机器 {host}:{port}")
             return OperationResult(
                 success=True,
@@ -394,15 +419,24 @@ async def set_target(request: MachineAppTargetRequest):
         )
     
     try:
-        success = operation.set_target(request.machine_id, request.app_name)
+        # 根据 machine_id 获取 machine_info 的 registered_id（若有则用注册ID）
+        real_machine_id = request.machine_id
+        try:
+            info = machine_manager.get_machine(request.machine_id)
+            if info and info.get("registered_id"):
+                real_machine_id = info["registered_id"]
+        except Exception:
+            pass
+        
+        success = operation.set_target(real_machine_id, request.app_name)
         
         if success:
-            current_machine_id = request.machine_id
+            current_machine_id = real_machine_id
             current_app_name = request.app_name
             
             return OperationResult(
                 success=True,
-                message=f"设置目标成功: 机器 {request.machine_id}, 应用 {request.app_name}"
+                message=f"设置目标成功: 机器 {real_machine_id}, 应用 {request.app_name}"
             )
         else:
             return OperationResult(
@@ -434,7 +468,7 @@ async def get_machine_info():
             error=f"获取机器信息失败: {str(e)}"
         )
 
-@router.post("/machine/info", response_model=OperationResult)
+@router.post("/machine/info/add", response_model=OperationResult)
 async def add_machine_info(request: MachineInfoRequest):
     """添加新机器信息"""
     try:
@@ -493,8 +527,22 @@ async def update_machine_info(machine_id: str, request: MachineInfoRequest):
 
 @router.delete("/machine/info/{machine_id}", response_model=OperationResult)
 async def delete_machine_info(machine_id: str):
-    """删除机器信息"""
+    """删除机器信息（仅允许删除未连接的机器）"""
     try:
+        # 检查状态，连接中的机器不允许删除
+        machine = machine_manager.get_machine(machine_id)
+        if not machine:
+            return OperationResult(
+                success=False,
+                error="机器不存在"
+            )
+
+        if machine.get("status") == "connected":
+            return OperationResult(
+                success=False,
+                error="仅允许删除未连接的机器"
+            )
+
         success = machine_manager.delete_machine(machine_id)
         
         if success:
@@ -513,6 +561,42 @@ async def delete_machine_info(machine_id: str):
             success=False,
             error=f"删除机器信息失败: {str(e)}"
         )
+
+@router.post("/machine/info/batch-delete", response_model=OperationResult)
+async def batch_delete_machine_info(request: Dict[str, Any]):
+    """批量删除机器信息（仅删除未连接）"""
+    try:
+        ids = request.get("machine_ids") or []
+        if not isinstance(ids, list) or not ids:
+            return OperationResult(success=False, error="machine_ids 列表不能为空")
+
+        deleted: List[str] = []
+        skipped_connected: List[str] = []
+        not_found: List[str] = []
+
+        for mid in ids:
+            machine = machine_manager.get_machine(mid)
+            if not machine:
+                not_found.append(mid)
+                continue
+            if machine.get("status") == "connected":
+                skipped_connected.append(mid)
+                continue
+            if machine_manager.delete_machine(mid):
+                deleted.append(mid)
+
+        return OperationResult(
+            success=True,
+            data={
+                "deleted": deleted,
+                "skipped_connected": skipped_connected,
+                "not_found": not_found
+            },
+            message=f"删除 {len(deleted)} 台，跳过已连接 {len(skipped_connected)} 台，不存在 {len(not_found)} 台"
+        )
+    except Exception as e:
+        logger.error(f"批量删除机器失败: {e}")
+        return OperationResult(success=False, error=f"批量删除机器失败: {str(e)}")
 
 @router.post("/machine/connectById", response_model=OperationResult)
 async def connect_to_machine_by_id(request: MachineConnectRequest):
@@ -535,10 +619,13 @@ async def connect_to_machine_by_id(request: MachineConnectRequest):
             )
         
         # 连接到机器（使用固定端口8888）
-        success = communicator.connect_to_machine(request.machine_id, machine_info["host"], 8888)
+        result = communicator.connect_to_machine(request.machine_id, machine_info["host"], 8888)
         
-        if success:
-            # 更新机器状态
+        if result.get("success"):
+            # 更新机器状态与注册ID
+            actual_id = result.get("machine_id")
+            if actual_id:
+                machine_manager.update_machine_registered_id(request.machine_id, actual_id)
             machine_manager.update_machine_status(request.machine_id, "connected")
             
             return OperationResult(

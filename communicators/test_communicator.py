@@ -100,7 +100,8 @@ class TestMachineCommunicator:
                     
                     request = json.loads(data)
                     response = self._handle_request(machine_id, request)
-                    client_socket.sendall(json.dumps(response).encode('utf-8'))
+                    if response:
+                        client_socket.sendall(json.dumps(response).encode('utf-8'))
                     
                     # 更新最后活跃时间
                     if machine_id in self.machines:
@@ -225,7 +226,7 @@ class TestMachineCommunicator:
         request_type = request.get("type")
         
         if request_type == "machine_registration":
-            responseData = self._handle_machine_registration(None, request)
+            return None
         elif request_type == "register_app":
             responseData =  self._handle_app_registration(machine_id, request)
         elif request_type == "get_screenshot":
@@ -741,7 +742,7 @@ class TestMachineCommunicator:
         
         print("测试服务器已停止")
 
-    def _housekeeping_loop(self, interval_seconds: int = 5, timeout_seconds: int = 300) -> None:
+    def _housekeeping_loop(self, interval_seconds: int = 5, timeout_seconds: int = 3600) -> None:
         """后台保洁线程：周期清理超时非活跃连接"""
         while not self._housekeeping_stop and self.is_running:
             try:

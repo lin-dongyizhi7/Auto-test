@@ -157,7 +157,7 @@ export const getMachineInfo = (): Promise<ApiResponse<{ machines: any[] }>> => {
 }
 
 export const addMachineInfo = (data: { name: string; host: string; port: number; description?: string }): Promise<ApiResponse> => {
-  return request.post('/api/machine/info', data)
+  return request.post('/api/machine/info/add', data)
 }
 
 export const updateMachineInfo = (machineId: string, data: { name: string; host: string; port: number; description?: string }): Promise<ApiResponse> => {
@@ -166,6 +166,10 @@ export const updateMachineInfo = (machineId: string, data: { name: string; host:
 
 export const deleteMachineInfo = (machineId: string): Promise<ApiResponse> => {
   return request.delete(`/api/machine/info/${machineId}`)
+}
+
+export const batchDeleteMachineInfo = (machineIds: string[]): Promise<ApiResponse<{deleted: string[]; skipped_connected: string[]; not_found: string[]}>> => {
+  return request.post('/api/machine/info/batch-delete', { machine_ids: machineIds })
 }
 
 // 机器连接管理API

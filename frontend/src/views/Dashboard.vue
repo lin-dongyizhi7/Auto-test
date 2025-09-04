@@ -64,6 +64,7 @@
           <div class="actions">
             <el-button type="primary" size="small" @click="openCreateConnection">新建连接</el-button>
             <el-button type="success" size="small" @click="openAddMachine">添加机器</el-button>
+            <el-button type="danger" size="small" :disabled="selectedIds.length===0" @click="confirmBatchDelete">批量删除</el-button>
           </div>
         </div>
       </template>
@@ -76,13 +77,18 @@
         <el-col v-for="m in machineInfoList" :key="m.id" :span="8">
           <el-card class="machine-card" shadow="hover">
             <div class="machine-header">
-              <div class="machine-row" @click="$router.push({ name: 'Operation', query: { machine: m.id } })">
+              <div
+                class="machine-row"
+                :class="{ clickable: m.status === 'connected' }"
+                @click="handleCardClick(m)"
+              >
                 <el-tag :type="m.status === 'connected' ? 'success' : m.status === 'error' ? 'danger' : 'info'" size="small">
                   {{ m.status === 'connected' ? '已连接' : m.status === 'error' ? '连接错误' : '未连接' }}
                 </el-tag>
                 <span class="machine-name">{{ m.name }}</span>
               </div>
               <div class="machine-actions">
+                <el-checkbox v-model="selectionMap[m.id]" :disabled="m.status==='connected'" title="选择用于批量删除" />
                 <el-button 
                   v-if="m.status !== 'connected'"
                   type="success" 
@@ -263,6 +269,8 @@ const machines = computed(() => operationStore.machines)
 const apps = computed(() => operationStore.apps)
 const operationLogs = computed(() => operationStore.operationLogs)
 const machineInfoList = computed(() => operationStore.machineInfoList)
+const selectionMap = ref<Record<string, boolean>>({})
+const selectedIds = computed(() => Object.keys(selectionMap.value).filter(id => selectionMap.value[id]))
 
 const testServerInfo = computed(() => {
   if (!isConnected.value) return '未启动'
@@ -419,6 +427,18 @@ const handleDisconnectMachine = async (machineId: string) => {
   }
 }
 
+const handleCardClick = (m: any) => {
+  if (m.status === 'connected') {
+    // 仅连接状态允许跳转
+    // 使用路由实例
+    // @ts-ignore
+    const router = (getCurrentInstance() as any)?.proxy?.$router || (window as any).__VUE_ROUTER__
+    if (router) {
+      router.push({ name: 'Operation', query: { machine: m.id } })
+    }
+  }
+}
+
 const openAddMachine = () => {
   newMachineName.value = ''
   newMachineHost.value = ''
@@ -460,6 +480,29 @@ const addMachine = async () => {
   }
 }
 
+const confirmBatchDelete = async () => {
+  if (selectedIds.value.length === 0) return
+  try {
+    await ElMessageBox.confirm(
+      `确定删除选中的 ${selectedIds.value.length} 台未连接机器？此操作不可恢复。`,
+      '确认批量删除',
+      { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' }
+    )
+    const ok = await operationStore.batchDeleteMachineInfoData(selectedIds.value)
+    if (ok) {
+      ElMessage.success('批量删除完成')
+      // 清空选择
+      selectionMap.value = {}
+      // 刷新
+      await operationStore.refreshMachineInfo()
+    } else {
+      ElMessage.error('批量删除失败')
+    }
+  } catch (e) {
+    if (e !== 'cancel') ElMessage.error('操作失败')
+  }
+}
+
 const updateUptime = () => {
   const now = Date.now()
   const diff = now - startTime.value
@@ -476,6 +519,8 @@ onMounted(async () => {
   await operationStore.initialize()
   await operationStore.refreshMachines().catch(() => {})
   await operationStore.refreshMachineInfo().catch(() => {})
+  // 初始化选择映射，确保仅允许未连接的可选
+  selectionMap.value = Object.fromEntries((operationStore.machineInfoList || []).map((m: any) => [m.id, false]))
 })
 </script>
 
@@ -511,8 +556,9 @@ onMounted(async () => {
     align-items: center; 
     gap: 10px; 
     flex: 1;
-    cursor: pointer;
+    cursor: default;
   }
+  .machine-row.clickable { cursor: pointer; }
   
   .machine-name { 
     font-weight: 600; 
