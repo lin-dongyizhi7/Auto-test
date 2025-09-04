@@ -2,7 +2,7 @@
 Author: 凛冬已至 2985956026@qq.com
 Date: 2025-07-24 13:25:17
 LastEditors: 凛冬已至 2985956026@qq.com
-LastEditTime: 2025-09-04 13:54:05
+LastEditTime: 2025-09-04 16:07:23
 FilePath: \Auto-test\communicators\tested_communicator.py
 Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
 '''
@@ -344,14 +344,6 @@ class TestedMachineCommunicator:
                 self.test_server_socket.sendall(json.dumps(app_registration_request).encode('utf-8'))
                 print(f"同步应用 {app_name} 到测试服务器")
                 
-                # 等待响应（可选，如果需要确认）
-                response = self.test_server_socket.recv(1024).decode('utf-8')
-                response_data = json.loads(response)
-                if response_data.get("success"):
-                    print(f"应用 {app_name} 同步成功")
-                else:
-                    print(f"应用 {app_name} 同步失败: {response_data.get('error')}")
-                
         except Exception as e:
             print(f"同步已注册应用到服务器失败: {str(e)}")
 
@@ -521,6 +513,10 @@ class TestedMachineCommunicator:
                     print(f"与测试服务器 {self.test_server_addr} 的连接已断开")
                     self._emit_event("test_server_disconnected", {"test_server_addr": str(self.test_server_addr)})
                     return
+                
+                elif request["type"].endswith("_response"):
+                    response = request["data"]
+                    print(f"{request['type']} 收到 {self.test_server_addr} 的响应: {response}")
 
                 # 发送响应
                 self.test_server_socket.sendall(json.dumps(response).encode('utf-8'))
