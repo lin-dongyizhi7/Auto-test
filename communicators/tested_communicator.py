@@ -519,8 +519,9 @@ class TestedMachineCommunicator:
                     print(f"{request['type']} 收到 {self.test_server_addr} 的响应: {response}")
 
                 # 发送响应
-                self.test_server_socket.sendall(json.dumps(response).encode('utf-8'))
-                self._emit_event("client_response", {"from": str(self.test_server_addr), "ok": bool(response.get("success"))})
+                if not request["type"].endswith("_response"):
+                    self.test_server_socket.sendall(json.dumps(response).encode('utf-8'))
+                    self._emit_event("client_response", {"from": str(self.test_server_addr), "ok": bool(response.get("success"))})
 
         except json.JSONDecodeError:
             error_msg = {"success": False, "error": "无效的JSON格式"}
