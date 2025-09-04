@@ -13,6 +13,7 @@ Communicators Package
 这个包包含了多机器多应用通信的核心组件：
 
 - tested_communicator.py: 被测试机器客户端，执行自动化操作
+- machine_operator.py: 机器操作员，管理和协调多台机器的通信
 """
 
 __version__ = "2.0.0"
@@ -21,7 +22,9 @@ __description__ = "多机器多应用自动化测试通信框架"
 
 # 仅导出 TestedMachineCommunicator
 from .tested_communicator import TestedMachineCommunicator
+from .machine_operator import MachineOperator
 
 __all__ = [
     "TestedMachineCommunicator",
+    "MachineOperator"
 ]

@@ -24,10 +24,6 @@ from collections import OrderedDict
 from .machine_operator import MachineOperator
 
 
-
-
-
-
 class TestedMachineCommunicator:
     """被测试机器的通信类，支持多应用通信和事件同步"""
     
@@ -553,18 +549,16 @@ def interactive_setup():
     
     # 获取监听端口
     while True:
-        try:
-            port_input = input("请输入监听端口 (默认: 8888): ").strip()
-            if not port_input:
-                port = 8888
+        port_input = input("请输入监听端口 (默认: 8888): ").strip()
+        if not port_input:
+            port = 8888
+            break
+        else:
+            port = int(port_input)
+            if 1 <= port <= 65535:
+                break
             else:
-                port = int(port_input)
-                if 1 <= port <= 65535:
-                    break
-                else:
-                    print("❌ 端口号必须在 1-65535 范围内")
-        except ValueError:
-            print("❌ 请输入有效的端口号")
+                print("❌ 端口号必须在 1-65535 范围内")
     
     # 获取机器ID
     machine_id = input("请输入机器ID (默认: test_machine_001): ").strip()
