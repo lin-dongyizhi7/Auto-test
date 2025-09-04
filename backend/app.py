@@ -13,6 +13,7 @@ import sys
 import logging
 from typing import Optional
 from datetime import datetime
+from contextlib import asynccontextmanager
 
 # 项目根目录加入路径
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -44,11 +45,58 @@ is_running = False
 current_machine_id: Optional[str] = None
 current_app_name: Optional[str] = None
 
+# 生命周期事件处理
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """应用生命周期管理"""
+    global communicator, operation, is_running
+    
+    # 启动时处理
+    logger.info("后端应用启动")
+    
+    # 默认启动测试服务器
+    try:
+        communicator = TestMachineCommunicator(
+            server_host="0.0.0.0",
+            server_port=8888,
+            server_id="backend_server"
+        )
+        communicator.start_server()
+        
+        # 创建操作类
+        operation = MultiMachineOperation(communicator)
+        
+        is_running = True
+        
+        # 设置全局状态到各个路由模块
+        set_server_state(communicator, operation, is_running)
+        set_machine_state(communicator, operation, is_running)
+        set_operation_state(communicator, operation, is_running)
+        
+        logger.info("测试服务器已默认启动，监听端口: 8888")
+        
+    except Exception as e:
+        logger.error(f"默认启动测试服务器失败: {e}")
+        is_running = False
+    
+    yield
+    
+    # 关闭时处理
+    logger.info("后端应用关闭")
+    
+    # 清理资源
+    if operation:
+        operation.close()
+    
+    if communicator:
+        communicator.stop_server()
+
 # 创建FastAPI应用
 app = FastAPI(
     title="自动化测试系统后端API",
     description="提供多机器自动化测试的后端服务",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan
 )
 
 # 添加CORS中间件
@@ -134,53 +182,6 @@ async def root():
         "version": "1.0.0",
         "docs": "/docs"
     }
-
-# 启动时的事件处理
-@app.on_event("startup")
-async def startup_event():
-    """应用启动时的处理"""
-    global communicator, operation, is_running
-    
-    logger.info("后端应用启动")
-    
-    # 默认启动测试服务器
-    try:
-        communicator = TestMachineCommunicator(
-            server_host="0.0.0.0",
-            server_port=8888,
-            server_id="backend_server"
-        )
-        communicator.start_server()
-        
-        # 创建操作类
-        operation = MultiMachineOperation(communicator)
-        
-        is_running = True
-        
-        # 设置全局状态到各个路由模块
-        set_server_state(communicator, operation, is_running)
-        set_machine_state(communicator, operation, is_running)
-        set_operation_state(communicator, operation, is_running)
-        
-        logger.info("测试服务器已默认启动，监听端口: 8888")
-        
-    except Exception as e:
-        logger.error(f"默认启动测试服务器失败: {e}")
-        is_running = False
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    """应用关闭时的处理"""
-    global communicator, operation
-    
-    logger.info("后端应用关闭")
-    
-    # 清理资源
-    if operation:
-        operation.close()
-    
-    if communicator:
-        communicator.stop_server()
 
 if __name__ == "__main__":
     import uvicorn

@@ -151,9 +151,26 @@ export const getEvents = (limit?: number, eventType?: string): Promise<ApiRespon
   return request.get('/api/events', { params })
 }
 
+// 机器信息管理API
+export const getMachineInfo = (): Promise<ApiResponse<{ machines: any[] }>> => {
+  return request.get('/api/machine/info')
+}
+
+export const addMachineInfo = (data: { name: string; host: string; port: number; description?: string }): Promise<ApiResponse> => {
+  return request.post('/api/machine/info', data)
+}
+
+export const updateMachineInfo = (machineId: string, data: { name: string; host: string; port: number; description?: string }): Promise<ApiResponse> => {
+  return request.put(`/api/machine/info/${machineId}`, data)
+}
+
+export const deleteMachineInfo = (machineId: string): Promise<ApiResponse> => {
+  return request.delete(`/api/machine/info/${machineId}`)
+}
+
 // 机器连接管理API
-export const connectToMachine = (host: string, port: number): Promise<ApiResponse> => {
-  return request.post('/api/machine/connect', { host, port })
+export const connectToMachine = (machineId: string): Promise<ApiResponse> => {
+  return request.post('/api/machine/connect', { machine_id: machineId })
 }
 
 export const disconnectMachine = (machineId: string): Promise<ApiResponse> => {

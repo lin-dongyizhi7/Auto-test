@@ -12,10 +12,11 @@ class Config:
     DEFAULT_PORT = int(os.getenv("TEST_SERVER_PORT", "8888"))
     DEFAULT_HOST = os.getenv("TEST_SERVER_HOST", "0.0.0.0")
     
-    # 脚本存储配置（新）
-    SCRIPT_STORAGE_DIR = os.getenv("SCRIPT_STORAGE_DIR", os.path.dirname(__file__))
-    SCRIPTS_STORE_DIR = os.path.join(SCRIPT_STORAGE_DIR, "scripts_store")
-    SCRIPT_INFO_FILE = os.path.join(SCRIPT_STORAGE_DIR, "script_info.json")
+    # 数据存储配置
+    DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
+    SCRIPTS_STORE_DIR = os.path.join(DATA_DIR, "scripts_store")
+    SCRIPT_INFO_FILE = os.path.join(DATA_DIR, "script_info.json")
+    MACHINE_INFO_FILE = os.path.join(DATA_DIR, "machine_info.json")
     
     # 脚本执行配置
     SCRIPT_TIMEOUT = int(os.getenv("SCRIPT_TIMEOUT", "30"))  # 脚本执行超时时间（秒）
@@ -47,7 +48,7 @@ class ProductionConfig(Config):
 # 测试环境配置
 class TestingConfig(Config):
     TESTING = True
-    SCRIPT_STORAGE_DIR = "/tmp/autotest_scripts"
+    DATA_DIR = "/tmp/autotest_data"
     SCRIPT_TIMEOUT = 10
 
 # 根据环境变量选择配置

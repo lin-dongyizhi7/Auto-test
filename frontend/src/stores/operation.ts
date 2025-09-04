@@ -37,6 +37,10 @@ import {
   waitForElement,
   waitForImage,
   getEvents,
+  getMachineInfo,
+  addMachineInfo,
+  updateMachineInfo,
+  deleteMachineInfo,
   connectToMachine,
   disconnectMachine
 } from '@/api/operation'
@@ -56,6 +60,10 @@ export const useOperationStore = defineStore('operation', () => {
   const currentTarget = ref<CurrentTarget | null>(null)
   const loadingMachines = ref(false)
   const loadingApps = ref(false)
+  
+  // 机器信息管理状态
+  const machineInfoList = ref<any[]>([])
+  const loadingMachineInfo = ref(false)
 
   // 操作状态
   const operationLogs = ref<string[]>([])
@@ -539,14 +547,82 @@ export const useOperationStore = defineStore('operation', () => {
     }
   }
 
-  // 机器连接管理
-  const connectToTargetMachine = async (host: string, port: number) => {
+  // 机器信息管理
+  const refreshMachineInfo = async () => {
     try {
-      const response = await connectToMachine(host, port)
+      loadingMachineInfo.value = true
+      const response = await getMachineInfo()
+      if (response.success && response.data) {
+        machineInfoList.value = response.data.machines
+        addLog(`获取到 ${machineInfoList.value.length} 台机器信息`, 'info')
+      }
+    } catch (error) {
+      addLog(`获取机器信息失败: ${error}`, 'error')
+    } finally {
+      loadingMachineInfo.value = false
+    }
+  }
+
+  const addNewMachineInfo = async (name: string, host: string, port: number, description: string = '') => {
+    try {
+      const response = await addMachineInfo({ name, host, port, description })
       if (response.success) {
-        addLog(`成功连接到目标机器 ${host}:${port}`, 'success')
-        // 连接成功后刷新机器列表
+        addLog(`成功添加机器信息: ${name}`, 'success')
+        await refreshMachineInfo()
+        return true
+      } else {
+        addLog(`添加机器信息失败: ${response.error}`, 'error')
+        return false
+      }
+    } catch (error) {
+      addLog(`添加机器信息异常: ${error}`, 'error')
+      return false
+    }
+  }
+
+  const updateMachineInfoData = async (machineId: string, name: string, host: string, port: number, description: string = '') => {
+    try {
+      const response = await updateMachineInfo(machineId, { name, host, port, description })
+      if (response.success) {
+        addLog(`成功更新机器信息: ${name}`, 'success')
+        await refreshMachineInfo()
+        return true
+      } else {
+        addLog(`更新机器信息失败: ${response.error}`, 'error')
+        return false
+      }
+    } catch (error) {
+      addLog(`更新机器信息异常: ${error}`, 'error')
+      return false
+    }
+  }
+
+  const deleteMachineInfoData = async (machineId: string) => {
+    try {
+      const response = await deleteMachineInfo(machineId)
+      if (response.success) {
+        addLog(`成功删除机器信息: ${machineId}`, 'success')
+        await refreshMachineInfo()
+        return true
+      } else {
+        addLog(`删除机器信息失败: ${response.error}`, 'error')
+        return false
+      }
+    } catch (error) {
+      addLog(`删除机器信息异常: ${error}`, 'error')
+      return false
+    }
+  }
+
+  // 机器连接管理
+  const connectToTargetMachine = async (machineId: string) => {
+    try {
+      const response = await connectToMachine(machineId)
+      if (response.success) {
+        addLog(`成功连接到机器 ${machineId}`, 'success')
+        // 连接成功后刷新机器列表和机器信息
         await refreshMachines()
+        await refreshMachineInfo()
         return true
       } else {
         addLog(`连接目标机器失败: ${response.error}`, 'error')
@@ -563,8 +639,9 @@ export const useOperationStore = defineStore('operation', () => {
       const response = await disconnectMachine(machineId)
       if (response.success) {
         addLog(`成功断开与机器 ${machineId} 的连接`, 'success')
-        // 断开连接后刷新机器列表
+        // 断开连接后刷新机器列表和机器信息
         await refreshMachines()
+        await refreshMachineInfo()
         return true
       } else {
         addLog(`断开目标机器连接失败: ${response.error}`, 'error')
@@ -598,6 +675,8 @@ export const useOperationStore = defineStore('operation', () => {
     loadingApps,
     operationLogs,
     currentScreenshot,
+    machineInfoList,
+    loadingMachineInfo,
 
     // 计算属性
     availableMachines,
@@ -637,6 +716,12 @@ export const useOperationStore = defineStore('operation', () => {
 
     // 事件管理
     getEventHistory,
+
+    // 机器信息管理
+    refreshMachineInfo,
+    addNewMachineInfo,
+    updateMachineInfoData,
+    deleteMachineInfoData,
 
     // 机器连接管理
     connectToTargetMachine,
