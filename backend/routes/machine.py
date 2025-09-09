@@ -165,8 +165,11 @@ class MachineInfoManager:
         for i, machine in enumerate(data["storage"]):
             if machine["id"] == machine_id:
                 del data["storage"][i]
+                # 删除机器时减少计数器
+                if data["counter"] > 0:
+                    data["counter"] -= 1
                 self._save_data(data)
-                logger.info(f"删除机器: {machine_id}")
+                logger.info(f"删除机器: {machine_id}，计数器减1")
                 return True
         
         logger.warning(f"未找到机器: {machine_id}")

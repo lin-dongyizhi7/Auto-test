@@ -1,4 +1,19 @@
 {
   "counter": 1,
-  "storage": []
+  "storage": [
+    {
+      "id": "machine_1",
+      "name": "机器_192_168_132_129",
+      "host": "192.168.132.129",
+      "port": 8888,
+      "description": "通过新建连接添加的机器",
+      "status": "disconnected",
+      "created_at": "2025-09-09T16:07:42.501941",
+      "updated_at": "2025-09-09T16:12:58.188842",
+      "last_connected_at": "2025-09-09T16:07:42.590984",
+      "last_disconnected_at": "2025-09-09T16:12:58.188850",
+      "connection_count": 1,
+      "registered_id": "test_machine_001"
+    }
+  ]
 }

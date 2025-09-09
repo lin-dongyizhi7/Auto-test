@@ -233,12 +233,14 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Close, Connection } from '@element-plus/icons-vue'
 import { useOperationStore } from '@/stores/operation'
 // 移除不再需要的导入，因为机器连接管理已移至后端
 
 const operationStore = useOperationStore()
+const router = useRouter()
 
 // 响应式数据
 const uptime = ref('00:00:00')
@@ -431,11 +433,7 @@ const handleCardClick = (m: any) => {
   if (m.status === 'connected') {
     // 仅连接状态允许跳转
     // 使用路由实例
-    // @ts-ignore
-    const router = (getCurrentInstance() as any)?.proxy?.$router || (window as any).__VUE_ROUTER__
-    if (router) {
-      router.push({ name: 'Operation', query: { machine: m.id } })
-    }
+    router.push({ name: 'Operation', query: { machine: m.id } })
   }
 }
 

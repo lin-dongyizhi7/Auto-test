@@ -8,8 +8,8 @@
       "path": "d:/A-master/Auto-test/backend/data/scripts_store/script_1.json",
       "createdAt": "2025-09-02T00:00:00.000Z",
       "updatedAt": "2025-09-02T00:00:00.000Z",
-      "lastRunTime": "2025-09-04T15:11:14.124137",
-      "runCount": 3,
+      "lastRunTime": "2025-09-09T16:11:29.755980",
+      "runCount": 4,
       "target_app_name": "calculator",
       "last_run_machine_id": null
     }
