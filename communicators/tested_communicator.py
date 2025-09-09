@@ -2,7 +2,7 @@
 Author: 凛冬已至 2985956026@qq.com
 Date: 2025-07-24 13:25:17
 LastEditors: 凛冬已至 2985956026@qq.com
-LastEditTime: 2025-09-04 16:16:34
+LastEditTime: 2025-09-09 16:16:08
 FilePath: \Auto-test\communicators\tested_communicator.py
 Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
 '''
@@ -455,7 +455,6 @@ class TestedMachineCommunicator:
                 # 解析请求（JSON格式）
                 request = json.loads(request_data)
                 self._emit_event("client_request", {"from": str(self.test_server_addr), "type": request.get("type")})
-                response = {"success": False, "error": "未知请求类型"}
 
                 # 处理不同类型的请求
                 if request["type"] == "get_app_region":
