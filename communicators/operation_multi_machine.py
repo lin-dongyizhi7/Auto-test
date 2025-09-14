@@ -792,3 +792,273 @@ class MultiMachineOperation:
         # 未知类型：忽略或失败，这里选择失败以便提示
         return {"success": False, "error": f"不支持的步骤类型: {step_type}"}
 
+    # ==================== Python脚本执行 ====================
+
+    def run_python_script(self, script_content: str, target_machine_id: str = None, target_app_name: str = None) -> Dict[str, Any]:
+        """
+        执行Python脚本内容（解析为JSON后执行）
+        
+        :param script_content: Python脚本内容字符串
+        :param target_machine_id: 目标机器ID（可选，如果脚本中未设置则使用此参数）
+        :param target_app_name: 目标应用名称（可选，如果脚本中未设置则使用此参数）
+        :return: 执行结果字典
+        """
+        try:
+            self.logger.info("开始解析Python脚本")
+            
+            # 解析Python脚本为JSON格式
+            json_script = self._parse_python_script(script_content, target_machine_id, target_app_name)
+            
+            if not json_script.get("success"):
+                return json_script
+            
+            script_data = json_script["data"]
+            self.logger.info(f"Python脚本解析成功，目标: {script_data['target_machine_ip']}/{script_data['target_app_name']}")
+            
+            # 将机器IP转换为机器ID（这里需要根据实际系统调整）
+            machine_id = self._get_machine_id_by_ip(script_data["target_machine_ip"])
+            if not machine_id:
+                return {"success": False, "error": f"未找到IP为 {script_data['target_machine_ip']} 的机器"}
+            
+            # 执行解析后的JSON脚本
+            return self.run_script(script_data)
+            
+        except Exception as e:
+            error_msg = f"执行Python脚本时发生异常: {str(e)}"
+            self.logger.error(error_msg)
+            return {"success": False, "error": error_msg}
+
+    def _parse_python_script(self, script_content: str, default_machine_id: str = None, default_app_name: str = None) -> Dict[str, Any]:
+        """
+        解析Python脚本内容为JSON格式
+        
+        :param script_content: Python脚本内容
+        :param default_machine_id: 默认机器ID
+        :param default_app_name: 默认应用名称
+        :return: 解析结果字典
+        """
+        try:
+            # 创建临时文件来执行Python脚本
+            import tempfile
+            import os
+            import sys
+            
+            # 添加op_record模块到路径
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            if current_dir not in sys.path:
+                sys.path.insert(0, current_dir)
+            
+            # 创建临时文件
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False, encoding='utf-8') as temp_file:
+                # 在脚本开头添加导入语句
+                temp_file.write("import sys\n")
+                temp_file.write("import os\n")
+                temp_file.write(f"sys.path.insert(0, r'{current_dir}')\n")
+                temp_file.write("from op_record import OpRecord\n")
+                temp_file.write("\n")
+                temp_file.write(script_content)
+                temp_file.write("\n\n")
+                # 添加获取JSON的代码
+                temp_file.write("try:\n")
+                temp_file.write("    json_script = OpRecord.transToJson()\n")
+                temp_file.write("    print('JSON_SCRIPT_START')\n")
+                temp_file.write("    print(json.dumps(json_script, ensure_ascii=False, indent=2))\n")
+                temp_file.write("    print('JSON_SCRIPT_END')\n")
+                temp_file.write("except Exception as e:\n")
+                temp_file.write("    print('ERROR:', str(e))\n")
+                temp_file.flush()
+                
+                temp_file_path = temp_file.name
+            
+            # 执行Python脚本
+            import subprocess
+            result = subprocess.run(
+                [sys.executable, temp_file_path],
+                capture_output=True,
+                text=True,
+                encoding='utf-8'
+            )
+            
+            # 清理临时文件
+            os.unlink(temp_file_path)
+            
+            # 解析输出结果
+            output = result.stdout
+            error_output = result.stderr
+            
+            if result.returncode != 0:
+                return {
+                    "success": False,
+                    "error": f"Python脚本执行失败: {error_output}"
+                }
+            
+            # 提取JSON部分
+            if 'JSON_SCRIPT_START' in output and 'JSON_SCRIPT_END' in output:
+                start_idx = output.find('JSON_SCRIPT_START') + len('JSON_SCRIPT_START')
+                end_idx = output.find('JSON_SCRIPT_END')
+                json_str = output[start_idx:end_idx].strip()
+                
+                try:
+                    json_script = json.loads(json_str)
+                    
+                    # 检查是否设置了目标机器和应用
+                    if not json_script.get("target_machine_ip") or not json_script.get("target_app_name"):
+                        if default_machine_id and default_app_name:
+                            # 使用默认值
+                            json_script["target_machine_ip"] = self._get_machine_ip_by_id(default_machine_id)
+                            json_script["target_app_name"] = default_app_name
+                        else:
+                            return {
+                                "success": False,
+                                "error": "Python脚本中未设置目标机器和应用，且未提供默认值",
+                                "need_target_info": True
+                            }
+                    
+                    return {
+                        "success": True,
+                        "data": json_script
+                    }
+                    
+                except json.JSONDecodeError as e:
+                    return {
+                        "success": False,
+                        "error": f"解析JSON失败: {str(e)}"
+                    }
+            else:
+                return {
+                    "success": False,
+                    "error": "Python脚本未生成有效的JSON输出"
+                }
+                
+        except Exception as e:
+            return {
+                "success": False,
+                "error": f"解析Python脚本时发生异常: {str(e)}"
+            }
+
+    def _get_machine_id_by_ip(self, machine_ip: str) -> Optional[str]:
+        """
+        根据IP地址获取机器ID
+        
+        :param machine_ip: 机器IP地址
+        :return: 机器ID或None
+        """
+        try:
+            for machine_id, machine_info in self.communicator.machines.items():
+                if isinstance(machine_info.get("address"), list) and len(machine_info["address"]) >= 1:
+                    if machine_info["address"][0] == machine_ip:
+                        return machine_id
+                elif isinstance(machine_info.get("address"), str):
+                    if machine_info["address"] == machine_ip:
+                        return machine_id
+            return None
+        except Exception as e:
+            self.logger.error(f"根据IP获取机器ID失败: {str(e)}")
+            return None
+
+    def _get_machine_ip_by_id(self, machine_id: str) -> Optional[str]:
+        """
+        根据机器ID获取IP地址
+        
+        :param machine_id: 机器ID
+        :return: IP地址或None
+        """
+        try:
+            machine_info = self.communicator.machines.get(machine_id)
+            if machine_info:
+                address = machine_info.get("address")
+                if isinstance(address, list) and len(address) >= 1:
+                    return address[0]
+                elif isinstance(address, str):
+                    return address
+            return None
+        except Exception as e:
+            self.logger.error(f"根据机器ID获取IP失败: {str(e)}")
+            return None
+
+    def run_python_script_from_file(self, file_path: str, target_machine_id: str = None, target_app_name: str = None) -> Dict[str, Any]:
+        """
+        从文件读取Python脚本并执行
+        
+        :param file_path: Python脚本文件路径
+        :param target_machine_id: 目标机器ID（可选）
+        :param target_app_name: 目标应用名称（可选）
+        :return: 执行结果字典
+        """
+        try:
+            # 读取Python脚本文件
+            with open(file_path, "r", encoding="utf-8") as f:
+                script_content = f.read()
+            
+            self.logger.info(f"从文件读取Python脚本: {file_path}")
+            return self.run_python_script(script_content, target_machine_id, target_app_name)
+            
+        except FileNotFoundError:
+            error_msg = f"Python脚本文件不存在: {file_path}"
+            self.logger.error(error_msg)
+            return {"success": False, "error": error_msg}
+        except Exception as e:
+            error_msg = f"读取Python脚本文件失败: {str(e)}"
+            self.logger.error(error_msg)
+            return {"success": False, "error": error_msg}
+
+    def validate_python_script(self, script_content: str) -> Dict[str, Any]:
+        """
+        验证Python脚本语法（占位实现）
+        
+        :param script_content: Python脚本内容
+        :return: 验证结果字典
+        """
+        try:
+            # 这里应该实现Python语法检查
+            # 可以使用ast模块进行语法验证
+            import ast
+            
+            # 尝试解析Python代码
+            ast.parse(script_content)
+            
+            return {
+                "success": True,
+                "message": "Python脚本语法正确"
+            }
+            
+        except SyntaxError as e:
+            return {
+                "success": False,
+                "error": f"Python语法错误: {str(e)}",
+                "line": e.lineno,
+                "column": e.offset
+            }
+        except Exception as e:
+            return {
+                "success": False,
+                "error": f"验证Python脚本时发生异常: {str(e)}"
+            }
+
+    def get_python_script_info(self, script_content: str) -> Dict[str, Any]:
+        """
+        获取Python脚本信息（占位实现）
+        
+        :param script_content: Python脚本内容
+        :return: 脚本信息字典
+        """
+        try:
+            lines = script_content.split('\n')
+            non_empty_lines = [line for line in lines if line.strip()]
+            
+            return {
+                "success": True,
+                "data": {
+                    "total_lines": len(lines),
+                    "non_empty_lines": len(non_empty_lines),
+                    "characters": len(script_content),
+                    "estimated_complexity": "low" if len(non_empty_lines) < 50 else "medium" if len(non_empty_lines) < 200 else "high"
+                }
+            }
+            
+        except Exception as e:
+            return {
+                "success": False,
+                "error": f"分析Python脚本信息时发生异常: {str(e)}"
+            }
+

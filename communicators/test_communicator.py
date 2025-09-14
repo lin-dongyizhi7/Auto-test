@@ -224,6 +224,38 @@ class TestMachineCommunicator:
     def _handle_request(self, machine_id: str, request: Dict) -> Dict:
         """处理来自机器的请求"""
         request_type = request.get("type")
+        # 处理来自目标机器的响应类消息（如 get_element_response 等）
+        if isinstance(request_type, str) and request_type.endswith("_response"):
+            payload = request.get("data", {}) if isinstance(request.get("data"), dict) else request
+            success = payload.get("success")
+            error_msg = payload.get("error")
+            base_action = request_type.replace("_response", "")
+
+            # 针对常见类型给出更清晰的日志
+            if base_action == "get_element":
+                if success:
+                    print(f"[{machine_id}] 元素查询成功")
+                else:
+                    print(f"[{machine_id}] 元素查询失败: {error_msg}")
+            elif base_action == "get_screenshot":
+                if success:
+                    print(f"[{machine_id}] 截图获取成功")
+                else:
+                    print(f"[{machine_id}] 截图获取失败: {error_msg}")
+            elif base_action == "exec_commands":
+                if success:
+                    print(f"[{machine_id}] 命令执行成功")
+                else:
+                    print(f"[{machine_id}] 命令执行失败: {error_msg}")
+            else:
+                # 通用响应日志
+                if success:
+                    print(f"[{machine_id}] {base_action} 成功")
+                else:
+                    print(f"[{machine_id}] {base_action} 失败: {error_msg}")
+
+            # 响应类消息仅记录日志，不再回发结果
+            return None
         
         if request_type == "machine_registration":
             return None

@@ -25,93 +25,178 @@
         <span>脚本列表</span>
       </template>
       
-      <el-table
-        v-loading="loading"
-        :data="scripts"
-        style="width: 100%"
-        @selection-change="handleSelectionChange"
-      >
-        <el-table-column type="selection" width="55" />
-        <el-table-column prop="name" label="脚本名称" min-width="150">
-          <template #default="{ row }">
-            <el-link type="primary" @click="viewScript(row)">{{ row.name }}</el-link>
-          </template>
-        </el-table-column>
-        <el-table-column prop="description" label="描述" min-width="200" show-overflow-tooltip />
-        <el-table-column label="目标" width="200">
-          <template #default="{ row }">
-            <div v-if="row.target_app_name">
-              <span style="margin: 0 5px">/</span>
-              <el-tag size="small" type="success">{{ row.target_app_name }}</el-tag>
-            </div>
-            <span v-else style="color: #909399">未设置</span>
-          </template>
-        </el-table-column>
+      <!-- 页签切换 -->
+      <el-tabs v-model="activeTab" @tab-change="handleTabChange">
+        <!-- JSON脚本页签 -->
+        <el-tab-pane label="JSON脚本" name="json">
+          <el-table
+            v-loading="loading"
+            :data="jsonScripts"
+            style="width: 100%"
+            @selection-change="handleSelectionChange"
+          >
+            <el-table-column type="selection" width="55" />
+            <el-table-column prop="name" label="脚本名称" min-width="150">
+              <template #default="{ row }">
+                <el-link type="primary" @click="viewScript(row)">{{ row.name }}</el-link>
+              </template>
+            </el-table-column>
+            <el-table-column prop="description" label="描述" min-width="200" show-overflow-tooltip />
+            <el-table-column label="目标" width="200">
+              <template #default="{ row }">
+                <div v-if="row.target_app_name">
+                  <span style="margin: 0 5px">/</span>
+                  <el-tag size="small" type="success">{{ row.target_app_name }}</el-tag>
+                </div>
+                <span v-else style="color: #909399">未设置</span>
+              </template>
+            </el-table-column>
+            
+            <el-table-column prop="runCount" label="运行次数" width="100" />
+            <el-table-column prop="lastRunTime" label="最后运行" width="180">
+              <template #default="{ row }">
+                {{ row.lastRunTime ? formatTime(row.lastRunTime) : '未运行' }}
+              </template>
+            </el-table-column>
+            <el-table-column prop="updatedAt" label="更新时间" width="180">
+              <template #default="{ row }">
+                {{ formatTime(row.updatedAt) }}
+              </template>
+            </el-table-column>
+            <el-table-column label="操作" width="160" fixed="right">
+              <template #default="{ row }">
+                <div class="action-buttons">
+                  <el-tooltip content="运行脚本" placement="top">
+                    <el-button 
+                      type="primary" 
+                      size="small" 
+                      circle
+                      @click="onRunScript(row)" 
+                    >
+                      <el-icon><VideoPlay /></el-icon>
+                    </el-button>
+                  </el-tooltip>
+                  
+                  <el-tooltip content="编辑脚本" placement="top">
+                    <el-button 
+                      type="warning" 
+                      size="small" 
+                      circle
+                      @click="editScript(row)"
+                    >
+                      <el-icon><Edit /></el-icon>
+                    </el-button>
+                  </el-tooltip>
+                  
+                  <el-tooltip content="导出脚本" placement="top">
+                    <el-button 
+                      type="success" 
+                      size="small" 
+                      circle
+                      @click="onExportScript(row)"
+                    >
+                      <el-icon><Download /></el-icon>
+                    </el-button>
+                  </el-tooltip>
+                  
+                  <el-tooltip content="删除脚本" placement="top">
+                    <el-button 
+                      type="danger" 
+                      size="small" 
+                      circle
+                      @click="onDeleteScript(row)"
+                    >
+                      <el-icon><Delete /></el-icon>
+                    </el-button>
+                  </el-tooltip>
+                </div>
+              </template>
+            </el-table-column>
+          </el-table>
+        </el-tab-pane>
         
-        <el-table-column prop="runCount" label="运行次数" width="100" />
-        <el-table-column prop="lastRunTime" label="最后运行" width="180">
-          <template #default="{ row }">
-            {{ row.lastRunTime ? formatTime(row.lastRunTime) : '未运行' }}
-          </template>
-        </el-table-column>
-        <el-table-column prop="updatedAt" label="更新时间" width="180">
-          <template #default="{ row }">
-            {{ formatTime(row.updatedAt) }}
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="160" fixed="right">
-          <template #default="{ row }">
-            <div class="action-buttons">
-              <el-tooltip content="运行脚本" placement="top">
-                <el-button 
-                  type="primary" 
-                  size="small" 
-                  circle
-                  @click="onRunScript(row)" 
-                >
-                  <el-icon><VideoPlay /></el-icon>
-                </el-button>
-              </el-tooltip>
-              
-              <el-tooltip content="编辑脚本" placement="top">
-                <el-button 
-                  type="warning" 
-                  size="small" 
-                  circle
-                  @click="editScript(row)"
-                >
-                  <el-icon><Edit /></el-icon>
-                </el-button>
-              </el-tooltip>
-              
-              <el-tooltip content="导出脚本" placement="top">
-                <el-button 
-                  type="success" 
-                  size="small" 
-                  circle
-                  @click="onExportScript(row)"
-                >
-                  <el-icon><Download /></el-icon>
-                </el-button>
-              </el-tooltip>
-              
-              <el-tooltip content="删除脚本" placement="top">
-                <el-button 
-                  type="danger" 
-                  size="small" 
-                  circle
-                  @click="onDeleteScript(row)"
-                >
-                  <el-icon><Delete /></el-icon>
-                </el-button>
-              </el-tooltip>
+        <!-- PY脚本页签 -->
+        <el-tab-pane label="PY脚本" name="python">
+          <div class="py-script-container">
+            <!-- 上传区域 -->
+            <div class="upload-section">
+              <el-upload
+                ref="pyUploadRef"
+                class="py-upload-demo"
+                drag
+                :auto-upload="false"
+                :on-change="handlePyFileChange"
+                :before-upload="beforePyUpload"
+                accept=".py"
+                :limit="1"
+              >
+                <el-icon class="el-icon--upload"><upload-filled /></el-icon>
+                <div class="el-upload__text">
+                  将Python脚本文件拖到此处，或<em>点击上传</em>
+                </div>
+                <template #tip>
+                  <div class="el-upload__tip">
+                    只能上传 .py 文件
+                  </div>
+                </template>
+              </el-upload>
             </div>
-          </template>
-        </el-table-column>
-      </el-table>
+            
+            <!-- 已上传的脚本列表 -->
+            <div class="py-script-list" v-if="pyScripts.length > 0">
+              <h4>已上传的Python脚本</h4>
+              <el-table
+                :data="pyScripts"
+                style="width: 100%"
+                @selection-change="handlePySelectionChange"
+              >
+                <el-table-column type="selection" width="55" />
+                <el-table-column prop="name" label="脚本名称" min-width="200" />
+                <el-table-column prop="size" label="文件大小" width="120">
+                  <template #default="{ row }">
+                    {{ formatFileSize(row.size) }}
+                  </template>
+                </el-table-column>
+                <el-table-column prop="uploadTime" label="上传时间" width="180">
+                  <template #default="{ row }">
+                    {{ formatTime(row.uploadTime) }}
+                  </template>
+                </el-table-column>
+                <el-table-column label="操作" width="120" fixed="right">
+                  <template #default="{ row }">
+                    <div class="action-buttons">
+                      <el-tooltip content="运行脚本" placement="top">
+                        <el-button 
+                          type="primary" 
+                          size="small" 
+                          circle
+                          @click="onRunPyScript(row)" 
+                        >
+                          <el-icon><VideoPlay /></el-icon>
+                        </el-button>
+                      </el-tooltip>
+                      
+                      <el-tooltip content="删除脚本" placement="top">
+                        <el-button 
+                          type="danger" 
+                          size="small" 
+                          circle
+                          @click="onDeletePyScript(row)"
+                        >
+                          <el-icon><Delete /></el-icon>
+                        </el-button>
+                      </el-tooltip>
+                    </div>
+                  </template>
+                </el-table-column>
+              </el-table>
+            </div>
+          </div>
+        </el-tab-pane>
+      </el-tabs>
 
       <!-- 批量操作 -->
-      <div class="batch-actions" v-if="selectedScripts.length > 0">
+      <div class="batch-actions" v-if="activeTab === 'json' && selectedScripts.length > 0">
         <el-button size="small" @click="batchDelete">
           批量删除 ({{ selectedScripts.length }})
         </el-button>
@@ -306,6 +391,44 @@
         <el-button type="primary" :loading="running" @click="confirmRunScript">运行</el-button>
       </template>
     </el-dialog>
+
+    <!-- Python脚本目标设置对话框 -->
+    <el-dialog
+      v-model="showPyTargetDialog"
+      title="设置Python脚本目标"
+      width="500px"
+      :close-on-click-modal="false"
+    >
+      <el-form ref="pyTargetFormRef" :model="pyTargetForm" :rules="pyTargetRules" label-width="120px">
+        <el-form-item label="目标机器IP" prop="machineIp" required>
+          <el-input v-model="pyTargetForm.machineIp" placeholder="请输入机器IP地址" />
+        </el-form-item>
+        <el-form-item label="目标应用" prop="appName" required>
+          <el-select v-model="pyTargetForm.appName" placeholder="请选择应用" style="width: 100%">
+            <el-option 
+              v-for="app in availableApps" 
+              :key="app.id"
+              :label="app.name"
+              :value="app.name"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="脚本内容预览">
+          <el-input
+            v-model="pyScriptPreview"
+            type="textarea"
+            :rows="8"
+            readonly
+            font-family="monospace"
+            style="font-size: 12px;"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="showPyTargetDialog = false">取消</el-button>
+        <el-button type="primary" :loading="runningPy" @click="confirmRunPyScript">运行Python脚本</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -335,12 +458,19 @@ const loading = ref(false)
 const scripts = ref<ScriptInfo[]>([])
 const selectedScripts = ref<ScriptInfo[]>([])
 
+// 页签相关
+const activeTab = ref('json')
+const jsonScripts = ref<ScriptInfo[]>([])
+const pyScripts = ref<any[]>([])
+const selectedPyScripts = ref<any[]>([])
+
 // 对话框状态
 const showCreateDialog = ref(false)
 const showEditDialog = ref(false)
 const showImportDialog = ref(false)
 const showViewDialog = ref(false)
 const showRunDialog = ref(false)
+const showPyTargetDialog = ref(false)
 
 // 计算属性
 const availableMachines = computed(() => operationStore.machines)
@@ -363,6 +493,15 @@ const editForm = reactive<UpdateScriptRequest>({
   content: ''
 })
 
+// Python脚本目标设置表单
+const pyTargetForm = reactive({
+  machineIp: '',
+  appName: ''
+})
+
+// Python脚本预览
+const pyScriptPreview = ref('')
+
 // 当前操作的脚本
 const currentScript = ref<ScriptInfo | null>(null)
 const runningScript = ref<ScriptInfo | null>(null)
@@ -373,11 +512,14 @@ const runTargetMachineId = ref('')
 const creating = ref(false)
 const updating = ref(false)
 const importing = ref(false)
+const runningPy = ref(false)
 
 // 表单引用
 const createFormRef = ref<FormInstance>()
 const editFormRef = ref<FormInstance>()
+const pyTargetFormRef = ref<FormInstance>()
 const uploadRef = ref()
+const pyUploadRef = ref()
 
 // 表单验证规则（保持不变）
 const createRules: FormRules = {
@@ -408,6 +550,17 @@ const editRules: FormRules = {
   ]
 }
 
+// Python脚本目标设置验证规则
+const pyTargetRules: FormRules = {
+  machineIp: [
+    { required: true, message: '请输入机器IP地址', trigger: 'blur' },
+    { pattern: /^(\d{1,3}\.){3}\d{1,3}$/, message: '请输入有效的IP地址', trigger: 'blur' }
+  ],
+  appName: [
+    { required: true, message: '请选择目标应用', trigger: 'change' }
+  ]
+}
+
 // 生命周期
 onMounted(async () => {
   await operationStore.initialize()
@@ -420,11 +573,18 @@ const loadScripts = async () => {
   try {
     const response = await getScriptsApi()
     // API返回的数据结构是 { scripts: ScriptInfo[] }
-    scripts.value = response.data?.scripts || []
+    const allScripts = response.data?.scripts || []
+    scripts.value = allScripts
+    
+    // 将脚本分类到JSON和PY两个列表
+    jsonScripts.value = allScripts.filter(script => script.type === 'json' || !script.type)
+    pyScripts.value = allScripts.filter(script => script.type === 'python')
   } catch (error) {
     ElMessage.error('加载脚本列表失败')
     console.error('Load scripts error:', error)
     scripts.value = []
+    jsonScripts.value = []
+    pyScripts.value = []
   } finally {
     loading.value = false
   }
@@ -438,9 +598,33 @@ const handleSelectionChange = (selection: ScriptInfo[]) => {
   selectedScripts.value = selection
 }
 
+// 页签切换处理
+const handleTabChange = (tabName: string) => {
+  activeTab.value = tabName
+  if (tabName === 'json') {
+    selectedScripts.value = []
+  } else if (tabName === 'python') {
+    selectedPyScripts.value = []
+  }
+}
+
+// PY脚本选择变化
+const handlePySelectionChange = (selection: any[]) => {
+  selectedPyScripts.value = selection
+}
+
  
 
 const formatTime = (time: string) => new Date(time).toLocaleString('zh-CN')
+
+// 格式化文件大小
+const formatFileSize = (bytes: number) => {
+  if (bytes === 0) return '0 B'
+  const k = 1024
+  const sizes = ['B', 'KB', 'MB', 'GB']
+  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
+}
 
 const resetCreateForm = () => {
   createForm.name = ''
@@ -658,6 +842,182 @@ const editCurrentScript = () => {
     editScript(currentScript.value)
   }
 }
+
+// ==================== PY脚本相关方法 ====================
+
+// PY文件上传处理
+const handlePyFileChange = (file: any) => {
+  console.log('PY文件选择:', file)
+  if (file.raw) {
+    uploadPyScript(file.raw)
+  }
+}
+
+const beforePyUpload = (file: File) => {
+  const isPython = file.name.toLowerCase().endsWith('.py')
+  if (!isPython) {
+    ElMessage.error('只能上传 .py 文件')
+    return false
+  }
+  return false
+}
+
+// 上传PY脚本
+const uploadPyScript = async (file: File) => {
+  try {
+    // 这里应该调用后端API上传PY脚本
+    // const response = await uploadPyScriptApi(file)
+    
+    // 临时添加到本地列表（实际应该从后端获取）
+    const pyScript = {
+      id: Date.now().toString(),
+      name: file.name,
+      size: file.size,
+      uploadTime: new Date().toISOString(),
+      file: file
+    }
+    
+    pyScripts.value.push(pyScript)
+    ElMessage.success('Python脚本上传成功')
+    
+    // 清空上传组件
+    ;(pyUploadRef.value as any)?.clearFiles()
+  } catch (error) {
+    ElMessage.error('Python脚本上传失败')
+    console.error('Upload PY script error:', error)
+  }
+}
+
+// 运行PY脚本
+const onRunPyScript = async (script: any) => {
+  if (!script) return
+  
+  try {
+    // 读取Python脚本内容
+    const scriptContent = await readPyScriptContent(script)
+    if (!scriptContent) {
+      ElMessage.error('无法读取Python脚本内容')
+      return
+    }
+    
+    // 检查脚本中是否设置了目标机器和应用
+    const hasTargetInfo = checkPyScriptTarget(scriptContent)
+    
+    if (hasTargetInfo) {
+      // 脚本中已设置目标，直接运行
+      await executePyScript(scriptContent)
+    } else {
+      // 脚本中未设置目标，显示设置对话框
+      pyScriptPreview.value = scriptContent
+      pyTargetForm.machineIp = ''
+      pyTargetForm.appName = ''
+      showPyTargetDialog.value = true
+    }
+    
+  } catch (error) {
+    ElMessage.error('运行Python脚本失败')
+    console.error('Run PY script error:', error)
+  }
+}
+
+// 读取Python脚本内容
+const readPyScriptContent = async (script: any): Promise<string | null> => {
+  try {
+    if (script.file) {
+      // 从上传的文件读取
+      return new Promise((resolve) => {
+        const reader = new FileReader()
+        reader.onload = (e) => {
+          resolve(e.target?.result as string || null)
+        }
+        reader.onerror = () => {
+          resolve(null)
+        }
+        reader.readAsText(script.file)
+      })
+    } else {
+      // 从后端API读取（如果有的话）
+      // const response = await getPyScriptContentApi(script.id)
+      // return response.data?.content || null
+      return null
+    }
+  } catch (error) {
+    console.error('Read PY script content error:', error)
+    return null
+  }
+}
+
+// 检查Python脚本中是否设置了目标机器和应用
+const checkPyScriptTarget = (scriptContent: string): boolean => {
+  // 检查是否包含setMachine调用
+  const setMachinePattern = /OpRecord\.setMachine\s*\(/i
+  return setMachinePattern.test(scriptContent)
+}
+
+// 执行Python脚本
+const executePyScript = async (scriptContent: string, machineIp?: string, appName?: string) => {
+  try {
+    runningPy.value = true
+    ElMessage.info('正在解析并运行Python脚本...')
+    
+    // 这里应该调用后端API运行Python脚本
+    // const response = await runPyScriptApi(scriptContent, machineIp, appName)
+    
+    // 临时实现，实际应该调用后端API
+    setTimeout(() => {
+      ElMessage.success('Python脚本运行完成')
+      runningPy.value = false
+      showPyTargetDialog.value = false
+    }, 2000)
+    
+  } catch (error) {
+    ElMessage.error('运行Python脚本失败')
+    console.error('Execute PY script error:', error)
+    runningPy.value = false
+  }
+}
+
+// 确认运行Python脚本
+const confirmRunPyScript = async () => {
+  if (!pyTargetFormRef.value) return
+  
+  await pyTargetFormRef.value.validate(async (valid) => {
+    if (valid) {
+      await executePyScript(
+        pyScriptPreview.value,
+        pyTargetForm.machineIp,
+        pyTargetForm.appName
+      )
+    }
+  })
+}
+
+// 删除PY脚本
+const onDeletePyScript = async (script: any) => {
+  try {
+    await ElMessageBox.confirm(`确定要删除Python脚本 "${script.name}" 吗？`, '确认删除', {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning'
+    })
+    
+    // 这里应该调用后端API删除PY脚本
+    // await deletePyScriptApi(script.id)
+    
+    // 从本地列表删除
+    const index = pyScripts.value.findIndex(s => s.id === script.id)
+    if (index > -1) {
+      pyScripts.value.splice(index, 1)
+    }
+    
+    ElMessage.success('Python脚本删除成功')
+  } catch (error) {
+    if (error !== 'cancel') {
+      ElMessage.error('删除Python脚本失败')
+      console.error('Delete PY script error:', error)
+    }
+  }
+}
 </script>
 
 <style lang="less" scoped>
@@ -740,6 +1100,27 @@ const editCurrentScript = () => {
     font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
     font-size: 13px;
     line-height: 1.5;
+  }
+  
+  // PY脚本页签样式
+  .py-script-container {
+    .upload-section {
+      margin-bottom: 20px;
+      
+      .py-upload-demo {
+        width: 100%;
+      }
+    }
+    
+    .py-script-list {
+      margin-top: 20px;
+      
+      h4 {
+        margin: 0 0 15px 0;
+        color: #606266;
+        font-size: 16px;
+      }
+    }
   }
 }
 </style> 
