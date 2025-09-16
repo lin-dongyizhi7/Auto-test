@@ -1,0 +1,177 @@
+{
+  "steps": [
+    {
+      "id": "1",
+      "type": "click_element",
+      "element_path": "1",
+      "role_name_list": [
+        "push button"
+      ]
+    },
+    {
+      "id": "2",
+      "type": "click_element",
+      "element_path": "2",
+      "role_name_list": [
+        "push button"
+      ]
+    },
+    {
+      "id": "3",
+      "type": "click_element",
+      "element_path": "+",
+      "role_name_list": [
+        "push button"
+      ]
+    },
+    {
+      "id": "4",
+      "type": "click_element",
+      "element_path": "3",
+      "role_name_list": [
+        "push button"
+      ]
+    },
+    {
+      "id": "5",
+      "type": "click_element",
+      "element_path": "=",
+      "role_name_list": [
+        "push button"
+      ]
+    },
+    {
+      "id": "6",
+      "type": "wait_element",
+      "element_path": "结果显示区域",
+      "timeout": [
+        "text"
+      ],
+      "role_name_list": "等待计算结果"
+    },
+    {
+      "id": "7",
+      "type": "hotkey",
+      "keys": [
+        "Ctrl",
+        "a"
+      ]
+    },
+    {
+      "id": "8",
+      "type": "key_press",
+      "key": "Delete"
+    },
+    {
+      "id": "9",
+      "type": "click_element",
+      "element_path": "5",
+      "role_name_list": [
+        "push button"
+      ]
+    },
+    {
+      "id": "10",
+      "type": "click_element",
+      "element_path": "×",
+      "role_name_list": [
+        "push button"
+      ]
+    },
+    {
+      "id": "11",
+      "type": "click_element",
+      "element_path": "4",
+      "role_name_list": [
+        "push button"
+      ]
+    },
+    {
+      "id": "12",
+      "type": "click_element",
+      "element_path": "=",
+      "role_name_list": [
+        "push button"
+      ]
+    },
+    {
+      "id": "13",
+      "type": "input_text",
+      "element_path": "输入框",
+      "text": "测试文本",
+      "role_name_list": null
+    },
+    {
+      "id": "14",
+      "type": "hotkey",
+      "keys": [
+        "Ctrl",
+        "c"
+      ]
+    },
+    {
+      "id": "15",
+      "type": "hotkey",
+      "keys": [
+        "Ctrl",
+        "v"
+      ]
+    },
+    {
+      "id": "16",
+      "type": "right_click_element",
+      "element_path": "结果区域",
+      "role_name_list": [
+        "text"
+      ]
+    },
+    {
+      "id": "17",
+      "type": "double_click_element",
+      "element_path": "标题栏",
+      "role_name_list": [
+        "title bar"
+      ]
+    },
+    {
+      "id": "18",
+      "type": "drag_and_drop",
+      "start_element": "源元素",
+      "end_element": "目标元素",
+      "role_name_list": [
+        "button"
+      ]
+    },
+    {
+      "id": "19",
+      "type": "click_image",
+      "image_path": "button_image.png",
+      "threshold": 0.8,
+      "region": [
+        100,
+        100,
+        200,
+        200
+      ]
+    },
+    {
+      "id": "20",
+      "type": "find_image",
+      "image_path": "icon.png",
+      "threshold": 0.9,
+      "region": "查找图标"
+    },
+    {
+      "id": "21",
+      "type": "get_screenshot",
+      "region": [
+        0,
+        0,
+        800,
+        600
+      ]
+    }
+  ],
+  "target_machine_ip": "192.168.1.100",
+  "target_app_name": "calculator"
+}

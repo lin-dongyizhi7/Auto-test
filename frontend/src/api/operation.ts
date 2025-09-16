@@ -17,6 +17,9 @@ import type {
   CreateScriptRequest,
   UpdateScriptRequest,
   ScriptRunResult,
+  PythonScriptRunRequest,
+  PythonScriptRunResult,
+  PythonScriptConvertRequest,
   OperationResult,
   ApiResponse
 } from './types'
@@ -183,4 +186,17 @@ export const connectToMachineById = (machineId: string): Promise<ApiResponse> =>
 
 export const disconnectMachineById = (machineId: string): Promise<ApiResponse> => {
   return request.post('/api/machine/disconnectById', { machine_id: machineId })
+}
+
+// Python脚本管理API
+export const runPythonScript = (data: PythonScriptRunRequest): Promise<ApiResponse<PythonScriptRunResult>> => {
+  return request.post('/api/scripts/python/run', data)
+}
+
+export const validatePythonScript = (data: PythonScriptRunRequest): Promise<ApiResponse<PythonScriptRunResult>> => {
+  return request.post('/api/scripts/python/validate', data)
+}
+
+export const convertPythonScript = (data: PythonScriptConvertRequest): Promise<ApiResponse<ScriptInfo>> => {
+  return request.post('/api/scripts/python/convert', data)
 } 

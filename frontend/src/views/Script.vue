@@ -4,11 +4,7 @@
     <div class="page-header">
       <h2>脚本管理</h2>
       <div class="header-actions">
-        <el-button type="primary" @click="showCreateDialog = true">
-          <el-icon><Plus /></el-icon>
-          新建脚本
-        </el-button>
-        <el-button @click="showImportDialog = true">
+        <el-button v-if="activeTab === 'json'" @click="showImportDialog = true">
           <el-icon><Upload /></el-icon>
           导入脚本
         </el-button>
@@ -136,60 +132,66 @@
                 </div>
                 <template #tip>
                   <div class="el-upload__tip">
-                    只能上传 .py 文件
+                    只能上传 .py 文件，上传后可直接运行
                   </div>
                 </template>
               </el-upload>
             </div>
             
-            <!-- 已上传的脚本列表 -->
-            <div class="py-script-list" v-if="pyScripts.length > 0">
-              <h4>已上传的Python脚本</h4>
-              <el-table
-                :data="pyScripts"
-                style="width: 100%"
-                @selection-change="handlePySelectionChange"
-              >
-                <el-table-column type="selection" width="55" />
-                <el-table-column prop="name" label="脚本名称" min-width="200" />
-                <el-table-column prop="size" label="文件大小" width="120">
-                  <template #default="{ row }">
-                    {{ formatFileSize(row.size) }}
-                  </template>
-                </el-table-column>
-                <el-table-column prop="uploadTime" label="上传时间" width="180">
-                  <template #default="{ row }">
-                    {{ formatTime(row.uploadTime) }}
-                  </template>
-                </el-table-column>
-                <el-table-column label="操作" width="120" fixed="right">
-                  <template #default="{ row }">
-                    <div class="action-buttons">
-                      <el-tooltip content="运行脚本" placement="top">
-                        <el-button 
-                          type="primary" 
-                          size="small" 
-                          circle
-                          @click="onRunPyScript(row)" 
-                        >
-                          <el-icon><VideoPlay /></el-icon>
-                        </el-button>
-                      </el-tooltip>
-                      
-                      <el-tooltip content="删除脚本" placement="top">
-                        <el-button 
-                          type="danger" 
-                          size="small" 
-                          circle
-                          @click="onDeletePyScript(row)"
-                        >
-                          <el-icon><Delete /></el-icon>
-                        </el-button>
-                      </el-tooltip>
+            <!-- 当前脚本信息 -->
+            <div class="current-script-info" v-if="currentPyScript">
+              <el-card shadow="hover">
+                <template #header>
+                  <div class="script-header">
+                    <span>当前脚本: {{ currentPyScript.name }}</span>
+                    <div class="script-actions">
+                      <el-button 
+                        type="primary" 
+                        :loading="runningPy"
+                        @click="onRunCurrentPyScript"
+                      >
+                        <el-icon><VideoPlay /></el-icon>
+                        运行脚本
+                      </el-button>
+                      <el-button 
+                        type="success" 
+                        :loading="convertingPy"
+                        @click="onConvertPyScript"
+                      >
+                        <el-icon><Download /></el-icon>
+                        转存为JSON
+                      </el-button>
+                      <el-button @click="clearCurrentPyScript">
+                        <el-icon><Delete /></el-icon>
+                        清除
+                      </el-button>
                     </div>
-                  </template>
-                </el-table-column>
-              </el-table>
+                  </div>
+                </template>
+                <div class="script-details">
+                  <p><strong>文件大小:</strong> {{ formatFileSize(currentPyScript.size) }}</p>
+                  <p><strong>上传时间:</strong> {{ formatTime(currentPyScript.uploadTime) }}</p>
+                </div>
+              </el-card>
+            </div>
+            
+            <!-- 使用说明 -->
+            <div class="usage-guide" v-if="!currentPyScript">
+              <el-card shadow="hover">
+                <template #header>
+                  <span>使用说明</span>
+                </template>
+                <div class="guide-content">
+                  <h4>Python脚本编写规范：</h4>
+                  <ol>
+                    <li>导入OpRecord类：<code>from op_record import OpRecord</code></li>
+                    <li>设置目标机器和应用：<code>OpRecord.setMachine("192.168.1.100", "calculator")</code></li>
+                    <li>编写操作步骤：<code>OpRecord.click_element("按钮", ["push button"])</code></li>
+                    <li>支持的操作：点击、输入、键盘、等待、图像识别等</li>
+                  </ol>
+                  <p><strong>注意：</strong>脚本中必须包含<code>OpRecord.setMachine()</code>调用，否则需要手动设置目标机器和应用。</p>
+                </div>
+              </el-card>
             </div>
           </div>
         </el-tab-pane>
@@ -203,50 +205,6 @@
       </div>
     </el-card>
 
-    <!-- 新建脚本对话框 -->
-    <el-dialog
-      v-model="showCreateDialog"
-      title="新建脚本"
-      width="800px"
-      :close-on-click-modal="false"
-    >
-      <el-form ref="createFormRef" :model="createForm" :rules="createRules" label-width="80px">
-        <el-form-item label="脚本名称" prop="name">
-          <el-input v-model="createForm.name" placeholder="请输入脚本名称" />
-        </el-form-item>
-        <el-form-item label="描述">
-          <el-input v-model="createForm.description" type="textarea" placeholder="请输入脚本描述" />
-        </el-form-item>
-        
-        
-        <el-form-item label="目标应用">
-          <el-select v-model="createForm.target_app_name" placeholder="选择目标应用" style="width: 100%">
-            <el-option 
-              v-for="app in availableApps" 
-              :key="app.id"
-              :label="app.name"
-              :value="app.name"
-            />
-          </el-select>
-        </el-form-item>
-        
-        <el-form-item label="脚本内容" prop="content">
-          <el-input
-            v-model="createForm.content"
-            type="textarea"
-            :rows="15"
-            placeholder="请输入Python脚本内容"
-            font-family="monospace"
-          />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="showCreateDialog = false">取消</el-button>
-        <el-button type="primary" @click="onCreateScript" :loading="creating">
-          创建
-        </el-button>
-      </template>
-    </el-dialog>
 
     <!-- 编辑脚本对话框 -->
     <el-dialog
@@ -307,7 +265,7 @@
         :auto-upload="false"
         :on-change="handleFileChange"
         :before-upload="beforeUpload"
-        accept=".py"
+        accept=".json"
         :limit="1"
       >
         <el-icon class="el-icon--upload"><upload-filled /></el-icon>
@@ -316,7 +274,7 @@
         </div>
         <template #tip>
           <div class="el-upload__tip">
-            只能上传 .py 文件
+            只能上传 .json 脚本文件
           </div>
         </template>
       </el-upload>
@@ -429,6 +387,50 @@
         <el-button type="primary" :loading="runningPy" @click="confirmRunPyScript">运行Python脚本</el-button>
       </template>
     </el-dialog>
+
+    <!-- Python脚本转存对话框 -->
+    <el-dialog
+      v-model="showPyConvertDialog"
+      title="转存为JSON脚本"
+      width="600px"
+      :close-on-click-modal="false"
+    >
+      <el-form ref="pyConvertFormRef" :model="pyConvertForm" :rules="pyConvertRules" label-width="120px">
+        <el-form-item label="脚本名称" prop="scriptName" required>
+          <el-input v-model="pyConvertForm.scriptName" placeholder="请输入JSON脚本名称" />
+        </el-form-item>
+        <el-form-item label="脚本描述">
+          <el-input v-model="pyConvertForm.description" type="textarea" placeholder="请输入脚本描述（可选）" />
+        </el-form-item>
+        <el-form-item label="目标机器IP">
+          <el-input v-model="pyConvertForm.machineIp" placeholder="请输入机器IP地址（可选）" />
+        </el-form-item>
+        <el-form-item label="目标应用">
+          <el-select v-model="pyConvertForm.appName" placeholder="请选择应用（可选）" style="width: 100%">
+            <el-option 
+              v-for="app in availableApps" 
+              :key="app.id"
+              :label="app.name"
+              :value="app.name"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="转换预览">
+          <el-input
+            v-model="pyConvertPreview"
+            type="textarea"
+            :rows="10"
+            readonly
+            font-family="monospace"
+            style="font-size: 12px;"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="showPyConvertDialog = false">取消</el-button>
+        <el-button type="primary" :loading="convertingPy" @click="confirmConvertPyScript">确认转存</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -436,7 +438,7 @@
 import { ref, reactive, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
-import { Plus, Upload, Refresh, UploadFilled, VideoPlay, Edit, Download, Delete } from '@element-plus/icons-vue'
+import { Upload, Refresh, UploadFilled, VideoPlay, Edit, Download, Delete } from '@element-plus/icons-vue'
 import { 
   getScripts as getScriptsApi, 
   getScript as getScriptApi, 
@@ -445,9 +447,12 @@ import {
   deleteScript as deleteScriptApi, 
   runScript as runScriptApi, 
   importScript as importScriptApi, 
-  exportScript as exportScriptApi 
+  exportScript as exportScriptApi,
+  runPythonScript as runPythonScriptApi,
+  validatePythonScript as validatePythonScriptApi,
+  convertPythonScript as convertPythonScriptApi
 } from '@/api/operation'
-import type { ScriptInfo, CreateScriptRequest, UpdateScriptRequest, ScriptRunResult } from '@/api/types'
+import type { ScriptInfo, UpdateScriptRequest, ScriptRunResult } from '@/api/types'
 import { useOperationStore } from '@/stores/operation'
 
 const operationStore = useOperationStore()
@@ -461,29 +466,23 @@ const selectedScripts = ref<ScriptInfo[]>([])
 // 页签相关
 const activeTab = ref('json')
 const jsonScripts = ref<ScriptInfo[]>([])
-const pyScripts = ref<any[]>([])
-const selectedPyScripts = ref<any[]>([])
+const currentPyScript = ref<any>(null)
 
 // 对话框状态
-const showCreateDialog = ref(false)
+ 
 const showEditDialog = ref(false)
 const showImportDialog = ref(false)
 const showViewDialog = ref(false)
 const showRunDialog = ref(false)
 const showPyTargetDialog = ref(false)
+const showPyConvertDialog = ref(false)
 
 // 计算属性
 const availableMachines = computed(() => operationStore.machines)
 const availableApps = computed(() => operationStore.apps)
 
 // 表单数据
-const createForm = reactive<CreateScriptRequest>({
-  name: '',
-  description: '',
-  content: '',
-  
-  target_app_name: ''
-})
+ 
 
 const editForm = reactive<UpdateScriptRequest>({
   name: '',
@@ -499,8 +498,17 @@ const pyTargetForm = reactive({
   appName: ''
 })
 
+// Python脚本转存表单
+const pyConvertForm = reactive({
+  scriptName: '',
+  description: '',
+  machineIp: '',
+  appName: ''
+})
+
 // Python脚本预览
 const pyScriptPreview = ref('')
+const pyConvertPreview = ref('')
 
 // 当前操作的脚本
 const currentScript = ref<ScriptInfo | null>(null)
@@ -509,32 +517,22 @@ const running = ref(false)
 const runTargetMachineId = ref('')
 
 // 加载状态
-const creating = ref(false)
+ 
 const updating = ref(false)
 const importing = ref(false)
 const runningPy = ref(false)
+const convertingPy = ref(false)
 
 // 表单引用
-const createFormRef = ref<FormInstance>()
+ 
 const editFormRef = ref<FormInstance>()
 const pyTargetFormRef = ref<FormInstance>()
+const pyConvertFormRef = ref<FormInstance>()
 const uploadRef = ref()
 const pyUploadRef = ref()
 
 // 表单验证规则（保持不变）
-const createRules: FormRules = {
-  name: [
-    { required: true, message: '请输入脚本名称', trigger: 'blur' },
-    { min: 1, max: 50, message: '长度在 1 到 50 个字符', trigger: 'blur' }
-  ],
-  
-  target_app_name: [
-    { required: true, message: '请选择目标应用', trigger: 'change' }
-  ],
-  content: [
-    { required: true, message: '请输入脚本内容', trigger: 'blur' }
-  ]
-}
+ 
 
 const editRules: FormRules = {
   name: [
@@ -561,6 +559,17 @@ const pyTargetRules: FormRules = {
   ]
 }
 
+// Python脚本转存验证规则
+const pyConvertRules: FormRules = {
+  scriptName: [
+    { required: true, message: '请输入脚本名称', trigger: 'blur' },
+    { min: 1, max: 50, message: '长度在 1 到 50 个字符', trigger: 'blur' }
+  ],
+  machineIp: [
+    { pattern: /^(\d{1,3}\.){3}\d{1,3}$/, message: '请输入有效的IP地址', trigger: 'blur' }
+  ]
+}
+
 // 生命周期
 onMounted(async () => {
   await operationStore.initialize()
@@ -576,15 +585,13 @@ const loadScripts = async () => {
     const allScripts = response.data?.scripts || []
     scripts.value = allScripts
     
-    // 将脚本分类到JSON和PY两个列表
-    jsonScripts.value = allScripts.filter(script => script.type === 'json' || !script.type)
-    pyScripts.value = allScripts.filter(script => script.type === 'python')
+    // 只处理JSON脚本（假设所有脚本都是JSON类型）
+    jsonScripts.value = allScripts
   } catch (error) {
     ElMessage.error('加载脚本列表失败')
     console.error('Load scripts error:', error)
     scripts.value = []
     jsonScripts.value = []
-    pyScripts.value = []
   } finally {
     loading.value = false
   }
@@ -599,18 +606,11 @@ const handleSelectionChange = (selection: ScriptInfo[]) => {
 }
 
 // 页签切换处理
-const handleTabChange = (tabName: string) => {
-  activeTab.value = tabName
+const handleTabChange = (tabName: string | number) => {
+  activeTab.value = String(tabName)
   if (tabName === 'json') {
     selectedScripts.value = []
-  } else if (tabName === 'python') {
-    selectedPyScripts.value = []
   }
-}
-
-// PY脚本选择变化
-const handlePySelectionChange = (selection: any[]) => {
-  selectedPyScripts.value = selection
 }
 
  
@@ -626,13 +626,7 @@ const formatFileSize = (bytes: number) => {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
 }
 
-const resetCreateForm = () => {
-  createForm.name = ''
-  createForm.description = ''
-  createForm.content = ''
-  
-  createForm.target_app_name = ''
-}
+ 
 
 const resetEditForm = () => {
   editForm.name = ''
@@ -642,27 +636,7 @@ const resetEditForm = () => {
   editForm.target_app_name = ''
 }
 
-// 创建脚本（调用 API）
-const onCreateScript = async () => {
-  if (!createFormRef.value) return
-  await createFormRef.value.validate(async (valid) => {
-    if (valid) {
-      creating.value = true
-      try {
-        await createScriptApi(createForm)
-        ElMessage.success('脚本创建成功')
-        showCreateDialog.value = false
-        resetCreateForm()
-        loadScripts()
-      } catch (error) {
-        ElMessage.error('脚本创建失败')
-        console.error('Create script error:', error)
-      } finally {
-        creating.value = false
-      }
-    }
-  })
-}
+ 
 
 // 编辑脚本
 const editScript = async (script: ScriptInfo) => {
@@ -779,19 +753,20 @@ const confirmRunScript = async () => {
   }
 }
 
-// 导入脚本
+// 导入脚本（仅支持JSON）
 const handleFileChange = (file: any) => {}
 
 const beforeUpload = (file: File) => {
-  const isPython = file.name.indexOf('.py') !== -1
-  if (!isPython) {
-    ElMessage.error('只能上传 .py 文件')
+  const isJson = file.name.toLowerCase().endsWith('.json')
+  if (!isJson) {
+    ElMessage.error('只能上传 .json 文件')
     return false
   }
   return false
 }
 
 const onImportScript = async () => {
+  if (activeTab.value !== 'json') return
   const uploadFiles = (uploadRef.value as any)?.uploadFiles
   if (!uploadFiles || uploadFiles.length === 0) {
     ElMessage.warning('请选择要导入的文件')
@@ -799,17 +774,47 @@ const onImportScript = async () => {
   }
   importing.value = true
   try {
-    await importScriptApi(uploadFiles[0].raw)
-    ElMessage.success('脚本导入成功')
-    showImportDialog.value = false
-    ;(uploadRef.value as any)?.clearFiles()
-    loadScripts()
+    const file: File = uploadFiles[0].raw
+    const content = await readFileAsText(file)
+    let parsed
+    try {
+      parsed = JSON.parse(content)
+    } catch (e) {
+      ElMessage.error('JSON 解析失败，请检查文件格式')
+      return
+    }
+    // 生成脚本保存请求
+    const name = (file.name || '导入脚本').replace(/\.json$/i, '')
+    const payload = {
+      name,
+      description: `从文件导入: ${file.name}`,
+      content: JSON.stringify(parsed, null, 2),
+      target_app_name: parsed.target_app_name || ''
+    }
+    const resp = await createScriptApi(payload as any)
+    if (resp.success) {
+      ElMessage.success('脚本导入成功')
+      showImportDialog.value = false
+      ;(uploadRef.value as any)?.clearFiles()
+      await loadScripts()
+    } else {
+      ElMessage.error(resp.error || '脚本导入失败')
+    }
   } catch (error) {
     ElMessage.error('脚本导入失败')
     console.error('Import script error:', error)
   } finally {
     importing.value = false
   }
+}
+
+const readFileAsText = (file: File): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = e => resolve((e.target?.result as string) || '')
+    reader.onerror = reject
+    reader.readAsText(file, 'utf-8')
+  })
 }
 
 // 导出脚本
@@ -830,9 +835,18 @@ const onExportScript = async (script: ScriptInfo) => {
   }
 }
 
-// 查看脚本
-const viewScript = (script: ScriptInfo) => {
-  currentScript.value = script
+// 查看脚本（获取详情以填充内容）
+const viewScript = async (script: ScriptInfo) => {
+  try {
+    const resp = await getScriptApi(script.id)
+    const data = resp.data as ScriptInfo
+    currentScript.value = {
+      ...script,
+      content: data.content || script.content || ''
+    }
+  } catch (e) {
+    currentScript.value = script
+  }
   showViewDialog.value = true
 }
 
@@ -849,7 +863,7 @@ const editCurrentScript = () => {
 const handlePyFileChange = (file: any) => {
   console.log('PY文件选择:', file)
   if (file.raw) {
-    uploadPyScript(file.raw)
+    setCurrentPyScript(file.raw)
   }
 }
 
@@ -862,39 +876,42 @@ const beforePyUpload = (file: File) => {
   return false
 }
 
-// 上传PY脚本
-const uploadPyScript = async (file: File) => {
+// 设置当前Python脚本
+const setCurrentPyScript = (file: File) => {
   try {
-    // 这里应该调用后端API上传PY脚本
-    // const response = await uploadPyScriptApi(file)
-    
-    // 临时添加到本地列表（实际应该从后端获取）
-    const pyScript = {
-      id: Date.now().toString(),
+    currentPyScript.value = {
       name: file.name,
       size: file.size,
       uploadTime: new Date().toISOString(),
       file: file
     }
     
-    pyScripts.value.push(pyScript)
-    ElMessage.success('Python脚本上传成功')
+    ElMessage.success('Python脚本加载成功，可以运行了')
     
     // 清空上传组件
     ;(pyUploadRef.value as any)?.clearFiles()
   } catch (error) {
-    ElMessage.error('Python脚本上传失败')
-    console.error('Upload PY script error:', error)
+    ElMessage.error('Python脚本加载失败')
+    console.error('Set current PY script error:', error)
   }
 }
 
-// 运行PY脚本
-const onRunPyScript = async (script: any) => {
-  if (!script) return
+// 清除当前Python脚本
+const clearCurrentPyScript = () => {
+  currentPyScript.value = null
+  ElMessage.info('已清除当前脚本')
+}
+
+// 运行当前Python脚本
+const onRunCurrentPyScript = async () => {
+  if (!currentPyScript.value) {
+    ElMessage.warning('请先上传Python脚本文件')
+    return
+  }
   
   try {
     // 读取Python脚本内容
-    const scriptContent = await readPyScriptContent(script)
+    const scriptContent = await readPyScriptContent(currentPyScript.value)
     if (!scriptContent) {
       ElMessage.error('无法读取Python脚本内容')
       return
@@ -936,9 +953,6 @@ const readPyScriptContent = async (script: any): Promise<string | null> => {
         reader.readAsText(script.file)
       })
     } else {
-      // 从后端API读取（如果有的话）
-      // const response = await getPyScriptContentApi(script.id)
-      // return response.data?.content || null
       return null
     }
   } catch (error) {
@@ -960,19 +974,24 @@ const executePyScript = async (scriptContent: string, machineIp?: string, appNam
     runningPy.value = true
     ElMessage.info('正在解析并运行Python脚本...')
     
-    // 这里应该调用后端API运行Python脚本
-    // const response = await runPyScriptApi(scriptContent, machineIp, appName)
+    // 调用后端API运行Python脚本
+    const response = await runPythonScriptApi({
+      script_content: scriptContent,
+      target_machine_ip: machineIp,
+      target_app_name: appName
+    })
     
-    // 临时实现，实际应该调用后端API
-    setTimeout(() => {
+    if (response.success) {
       ElMessage.success('Python脚本运行完成')
-      runningPy.value = false
       showPyTargetDialog.value = false
-    }, 2000)
+    } else {
+      ElMessage.error(response.error || 'Python脚本运行失败')
+    }
     
   } catch (error) {
     ElMessage.error('运行Python脚本失败')
     console.error('Execute PY script error:', error)
+  } finally {
     runningPy.value = false
   }
 }
@@ -992,32 +1011,99 @@ const confirmRunPyScript = async () => {
   })
 }
 
-// 删除PY脚本
-const onDeletePyScript = async (script: any) => {
+// 转存Python脚本为JSON
+const onConvertPyScript = async () => {
+  if (!currentPyScript.value) {
+    ElMessage.warning('请先上传Python脚本文件')
+    return
+  }
+  
   try {
-    await ElMessageBox.confirm(`确定要删除Python脚本 "${script.name}" 吗？`, '确认删除', {
-      confirmButtonText: '确定',
-      cancelButtonText: '取消',
-      type: 'warning'
-    })
-    
-    // 这里应该调用后端API删除PY脚本
-    // await deletePyScriptApi(script.id)
-    
-    // 从本地列表删除
-    const index = pyScripts.value.findIndex(s => s.id === script.id)
-    if (index > -1) {
-      pyScripts.value.splice(index, 1)
+    // 读取Python脚本内容
+    const scriptContent = await readPyScriptContent(currentPyScript.value)
+    if (!scriptContent) {
+      ElMessage.error('无法读取Python脚本内容')
+      return
     }
     
-    ElMessage.success('Python脚本删除成功')
+    // 生成默认脚本名称
+    const defaultName = currentPyScript.value.name.replace('.py', '') + '_converted'
+    
+    // 设置表单默认值
+    pyConvertForm.scriptName = defaultName
+    pyConvertForm.description = `从Python脚本转换: ${currentPyScript.value.name}`
+    pyConvertForm.machineIp = ''
+    pyConvertForm.appName = ''
+    
+    // 生成转换预览
+    await generateConvertPreview(scriptContent)
+    
+    // 显示转存对话框
+    showPyConvertDialog.value = true
+    
   } catch (error) {
-    if (error !== 'cancel') {
-      ElMessage.error('删除Python脚本失败')
-      console.error('Delete PY script error:', error)
-    }
+    ElMessage.error('准备转存失败')
+    console.error('Prepare convert error:', error)
   }
 }
+
+// 生成转换预览
+const generateConvertPreview = async (scriptContent: string) => {
+  try {
+    // 调用后端API生成预览（这里简化处理，直接显示脚本内容）
+    pyConvertPreview.value = `# Python脚本内容预览:\n${scriptContent}\n\n# 将转换为JSON格式的脚本步骤`
+  } catch (error) {
+    console.error('Generate preview error:', error)
+    pyConvertPreview.value = '预览生成失败'
+  }
+}
+
+// 确认转存Python脚本
+const confirmConvertPyScript = async () => {
+  if (!pyConvertFormRef.value || !currentPyScript.value) return
+  
+  await pyConvertFormRef.value.validate(async (valid) => {
+    if (valid) {
+      try {
+        convertingPy.value = true
+        
+        // 读取Python脚本内容
+        const scriptContent = await readPyScriptContent(currentPyScript.value)
+        if (!scriptContent) {
+          ElMessage.error('无法读取Python脚本内容')
+          return
+        }
+        
+        // 调用后端API转换脚本
+        const response = await convertPythonScriptApi({
+          script_content: scriptContent,
+          script_name: pyConvertForm.scriptName,
+          description: pyConvertForm.description,
+          target_machine_ip: pyConvertForm.machineIp || undefined,
+          target_app_name: pyConvertForm.appName || undefined
+        })
+        
+        if (response.success) {
+          ElMessage.success('Python脚本已成功转换为JSON脚本')
+          showPyConvertDialog.value = false
+          // 刷新脚本列表
+          await loadScripts()
+          // 切换到JSON脚本页签
+          activeTab.value = 'json'
+        } else {
+          ElMessage.error(response.error || '转换失败')
+        }
+        
+      } catch (error) {
+        ElMessage.error('转换Python脚本失败')
+        console.error('Convert PY script error:', error)
+      } finally {
+        convertingPy.value = false
+      }
+    }
+  })
+}
+
 </script>
 
 <style lang="less" scoped>
@@ -1112,13 +1198,65 @@ const onDeletePyScript = async (script: any) => {
       }
     }
     
-    .py-script-list {
+    .current-script-info {
       margin-top: 20px;
       
-      h4 {
-        margin: 0 0 15px 0;
-        color: #606266;
-        font-size: 16px;
+      .script-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        
+        .script-actions {
+          display: flex;
+          gap: 10px;
+        }
+      }
+      
+      .script-details {
+        p {
+          margin: 8px 0;
+          color: #606266;
+        }
+      }
+    }
+    
+    .usage-guide {
+      margin-top: 20px;
+      
+      .guide-content {
+        h4 {
+          margin: 0 0 10px 0;
+          color: #303133;
+        }
+        
+        ol {
+          margin: 10px 0;
+          padding-left: 20px;
+          
+          li {
+            margin: 8px 0;
+            line-height: 1.6;
+            
+            code {
+              background-color: #f5f7fa;
+              padding: 2px 6px;
+              border-radius: 3px;
+              font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+              font-size: 13px;
+              color: #e6a23c;
+            }
+          }
+        }
+        
+        p {
+          margin: 10px 0;
+          color: #606266;
+          line-height: 1.6;
+          
+          strong {
+            color: #e6a23c;
+          }
+        }
       }
     }
   }

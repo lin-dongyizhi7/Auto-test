@@ -143,6 +143,29 @@ export interface ScriptRunResult {
   executionTime: number;
 }
 
+// Python脚本相关类型
+export interface PythonScriptRunRequest {
+  script_content: string;
+  target_machine_ip?: string;
+  target_app_name?: string;
+}
+
+export interface PythonScriptRunResult {
+  success: boolean;
+  data?: any;
+  output?: string;
+  error?: string;
+  message?: string;
+}
+
+export interface PythonScriptConvertRequest {
+  script_content: string;
+  script_name: string;
+  description?: string;
+  target_machine_ip?: string;
+  target_app_name?: string;
+}
+
 // 操作结果类型
 export interface OperationResult {
   success: boolean;

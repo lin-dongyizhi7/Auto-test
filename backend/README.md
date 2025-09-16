@@ -106,6 +106,12 @@ python -m uvicorn app:app --host 0.0.0.0 --port 8080
 - `DELETE /api/scripts/{id}` - 删除脚本
 - `POST /api/scripts/{id}/run` - 运行脚本
 
+### Python脚本管理
+
+- `POST /api/scripts/python/run` - 运行Python脚本
+- `POST /api/scripts/python/validate` - 验证Python脚本语法
+- `POST /api/scripts/python/convert` - 将Python脚本转换为JSON脚本并保存
+
 ### 事件管理
 
 - `GET /api/events` - 获取事件历史
@@ -118,6 +124,114 @@ python -m uvicorn app:app --host 0.0.0.0 --port 8080
 4. **设置操作目标**：`POST /api/target/set`，Body: `{"machine_id": "machine_001", "app_name": "calculator"}`
 5. **执行操作**：调用各种操作 API（点击、输入、截图等）
 6. **运行脚本**：`POST /api/scripts/{id}/run`
+7. **运行Python脚本**：`POST /api/scripts/python/run`
+
+## Python脚本API详细说明
+
+### 运行Python脚本
+
+**端点**: `POST /api/scripts/python/run`
+
+**请求体**:
+```json
+{
+  "script_content": "from op_record import OpRecord\nOpRecord.setMachine('192.168.1.100', 'calculator')\nOpRecord.click_element('按钮', ['push button'])",
+  "target_machine_ip": "192.168.1.100",
+  "target_app_name": "calculator"
+}
+```
+
+**响应**:
+```json
+{
+  "success": true,
+  "data": {...},
+  "message": "Python脚本执行成功"
+}
+```
+
+### 验证Python脚本语法
+
+**端点**: `POST /api/scripts/python/validate`
+
+**请求体**:
+```json
+{
+  "script_content": "from op_record import OpRecord\nOpRecord.setMachine('192.168.1.100', 'calculator')"
+}
+```
+
+**响应**:
+```json
+{
+  "success": true,
+  "message": "Python脚本语法正确"
+}
+```
+
+### Python脚本编写规范
+
+1. **导入OpRecord类**:
+   ```python
+   from op_record import OpRecord
+   ```
+
+2. **设置目标机器和应用**:
+   ```python
+   OpRecord.setMachine("192.168.1.100", "calculator")
+   ```
+
+3. **编写操作步骤**:
+   ```python
+   OpRecord.click_element("按钮", ["push button"])
+   OpRecord.input_text("输入框", "测试文本")
+   OpRecord.hotkey(["Ctrl", "c"])
+   ```
+
+4. **支持的操作类型**:
+   - 鼠标操作：`click_element`, `right_click_element`, `double_click_element`
+   - 键盘操作：`input_text`, `hotkey`, `key_press`
+   - 等待操作：`wait_for_element`, `wait_for_image`
+   - 图像识别：`click_image`, `find_image`
+   - 截图操作：`get_screenshot`
+
+### 转换Python脚本为JSON脚本
+
+**端点**: `POST /api/scripts/python/convert`
+
+**请求体**:
+```json
+{
+  "script_content": "from op_record import OpRecord\nOpRecord.setMachine('192.168.1.100', 'calculator')\nOpRecord.click_element('按钮', ['push button'])",
+  "script_name": "转换后的脚本",
+  "description": "从Python脚本转换而来",
+  "target_machine_ip": "192.168.1.100",
+  "target_app_name": "calculator"
+}
+```
+
+**响应**:
+```json
+{
+  "success": true,
+  "data": {
+    "id": "script_2",
+    "name": "转换后的脚本",
+    "description": "从Python脚本转换而来",
+    "content": "{\"target_machine_ip\":\"192.168.1.100\",\"target_app_name\":\"calculator\",\"steps\":[...]}",
+    "createdAt": "2024-01-01T00:00:00",
+    "updatedAt": "2024-01-01T00:00:00"
+  },
+  "message": "Python脚本已成功转换为JSON脚本: 转换后的脚本"
+}
+```
+
+**功能说明**:
+- 将Python脚本解析为JSON格式
+- 自动保存为JSON脚本到后端存储
+- 支持自定义脚本名称和描述
+- 可选择设置目标机器和应用
+- 转换成功后自动刷新脚本列表
 
 ## 脚本存储
 

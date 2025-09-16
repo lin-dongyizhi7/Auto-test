@@ -830,111 +830,130 @@ class MultiMachineOperation:
 
     def _parse_python_script(self, script_content: str, default_machine_id: str = None, default_app_name: str = None) -> Dict[str, Any]:
         """
-        解析Python脚本内容为JSON格式
-        
-        :param script_content: Python脚本内容
-        :param default_machine_id: 默认机器ID
-        :param default_app_name: 默认应用名称
-        :return: 解析结果字典
+        使用 AST 静态解析 Python 脚本，将 OpRecord 操作转换为 JSON 结构（不运行脚本）。
         """
         try:
-            # 创建临时文件来执行Python脚本
-            import tempfile
-            import os
-            import sys
-            
-            # 添加op_record模块到路径
-            current_dir = os.path.dirname(os.path.abspath(__file__))
-            if current_dir not in sys.path:
-                sys.path.insert(0, current_dir)
-            
-            # 创建临时文件
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False, encoding='utf-8') as temp_file:
-                # 在脚本开头添加导入语句
-                temp_file.write("import sys\n")
-                temp_file.write("import os\n")
-                temp_file.write(f"sys.path.insert(0, r'{current_dir}')\n")
-                temp_file.write("from op_record import OpRecord\n")
-                temp_file.write("\n")
-                temp_file.write(script_content)
-                temp_file.write("\n\n")
-                # 添加获取JSON的代码
-                temp_file.write("try:\n")
-                temp_file.write("    json_script = OpRecord.transToJson()\n")
-                temp_file.write("    print('JSON_SCRIPT_START')\n")
-                temp_file.write("    print(json.dumps(json_script, ensure_ascii=False, indent=2))\n")
-                temp_file.write("    print('JSON_SCRIPT_END')\n")
-                temp_file.write("except Exception as e:\n")
-                temp_file.write("    print('ERROR:', str(e))\n")
-                temp_file.flush()
-                
-                temp_file_path = temp_file.name
-            
-            # 执行Python脚本
-            import subprocess
-            result = subprocess.run(
-                [sys.executable, temp_file_path],
-                capture_output=True,
-                text=True,
-                encoding='utf-8'
-            )
-            
-            # 清理临时文件
-            os.unlink(temp_file_path)
-            
-            # 解析输出结果
-            output = result.stdout
-            error_output = result.stderr
-            
-            if result.returncode != 0:
-                return {
-                    "success": False,
-                    "error": f"Python脚本执行失败: {error_output}"
-                }
-            
-            # 提取JSON部分
-            if 'JSON_SCRIPT_START' in output and 'JSON_SCRIPT_END' in output:
-                start_idx = output.find('JSON_SCRIPT_START') + len('JSON_SCRIPT_START')
-                end_idx = output.find('JSON_SCRIPT_END')
-                json_str = output[start_idx:end_idx].strip()
-                
-                try:
-                    json_script = json.loads(json_str)
-                    
-                    # 检查是否设置了目标机器和应用
-                    if not json_script.get("target_machine_ip") or not json_script.get("target_app_name"):
-                        if default_machine_id and default_app_name:
-                            # 使用默认值
-                            json_script["target_machine_ip"] = self._get_machine_ip_by_id(default_machine_id)
-                            json_script["target_app_name"] = default_app_name
-                        else:
-                            return {
-                                "success": False,
-                                "error": "Python脚本中未设置目标机器和应用，且未提供默认值",
-                                "need_target_info": True
-                            }
-                    
-                    return {
-                        "success": True,
-                        "data": json_script
-                    }
-                    
-                except json.JSONDecodeError as e:
-                    return {
-                        "success": False,
-                        "error": f"解析JSON失败: {str(e)}"
-                    }
-            else:
-                return {
-                    "success": False,
-                    "error": "Python脚本未生成有效的JSON输出"
-                }
-                
+            import ast
+
+            class OpRecordAstVisitor(ast.NodeVisitor):
+                def __init__(self):
+                    self.steps: List[Dict[str, Any]] = []
+                    self.step_counter: int = 0
+                    self.target_machine_ip: Optional[str] = None
+                    self.target_app_name: Optional[str] = None
+
+                def _next_id(self) -> str:
+                    self.step_counter += 1
+                    return str(self.step_counter)
+
+                def _lit(self, node: ast.AST) -> Any:
+                    if isinstance(node, ast.Constant):
+                        return node.value
+                    if isinstance(node, ast.Str):
+                        return node.s
+                    if isinstance(node, ast.Num):
+                        return node.n
+                    if isinstance(node, ast.List):
+                        return [self._lit(e) for e in node.elts]
+                    if isinstance(node, ast.Tuple):
+                        return [self._lit(e) for e in node.elts]
+                    if isinstance(node, ast.Dict):
+                        return {self._lit(k): self._lit(v) for k, v in zip(node.keys, node.values)}
+                    if isinstance(node, ast.NameConstant):
+                        return node.value
+                    return None
+
+                def visit_Call(self, node: ast.Call):
+                    try:
+                        if isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Name) and node.func.value.id == 'OpRecord':
+                            method = node.func.attr
+                            args_vals = [self._lit(a) for a in node.args]
+                            kwargs = {kw.arg: self._lit(kw.value) for kw in node.keywords if kw.arg}
+
+                            if method == 'setMachine':
+                                ip = args_vals[0] if len(args_vals) > 0 else kwargs.get('machine_ip')
+                                app = args_vals[1] if len(args_vals) > 1 else kwargs.get('app_name')
+                                if isinstance(ip, str):
+                                    self.target_machine_ip = ip
+                                if isinstance(app, str):
+                                    self.target_app_name = app
+                                return
+
+                            step: Dict[str, Any] = {"id": self._next_id()}
+
+                            if method == 'click_element':
+                                step.update({"type": "click_element", "element_path": (args_vals[0] if len(args_vals) > 0 else kwargs.get('element_path')), "role_name_list": (args_vals[1] if len(args_vals) > 1 else kwargs.get('role_name_list')) or []})
+                            elif method == 'right_click_element':
+                                step.update({"type": "right_click_element", "element_path": (args_vals[0] if len(args_vals) > 0 else kwargs.get('element_path')), "role_name_list": (args_vals[1] if len(args_vals) > 1 else kwargs.get('role_name_list')) or []})
+                            elif method == 'double_click_element':
+                                step.update({"type": "double_click_element", "element_path": (args_vals[0] if len(args_vals) > 0 else kwargs.get('element_path')), "role_name_list": (args_vals[1] if len(args_vals) > 1 else kwargs.get('role_name_list')) or []})
+                            elif method == 'move_to_element_center':
+                                step.update({"type": "move_to_element_center", "element_path": (args_vals[0] if len(args_vals) > 0 else kwargs.get('element_path')), "role_name_list": (args_vals[1] if len(args_vals) > 1 else kwargs.get('role_name_list')) or []})
+                            elif method == 'move_to':
+                                step.update({"type": "move_to", "x": (args_vals[0] if len(args_vals) > 0 else kwargs.get('x')), "y": (args_vals[1] if len(args_vals) > 1 else kwargs.get('y'))})
+                            elif method == 'drag_and_drop':
+                                step.update({"type": "drag_and_drop", "start_element": (args_vals[0] if len(args_vals) > 0 else kwargs.get('start_element')), "end_element": (args_vals[1] if len(args_vals) > 1 else kwargs.get('end_element')), "role_name_list": (args_vals[2] if len(args_vals) > 2 else kwargs.get('role_name_list')) or []})
+                            elif method == 'input_text':
+                                if len(args_vals) >= 2:
+                                    element_path = args_vals[0]
+                                    text = args_vals[1]
+                                elif len(args_vals) == 1:
+                                    element_path = None
+                                    text = args_vals[0]
+                                else:
+                                    element_path = kwargs.get('element_path')
+                                    text = kwargs.get('text')
+                                step.update({"type": "input_text", "element_path": element_path, "text": text, "role_name_list": kwargs.get('role_name_list')})
+                            elif method == 'set_element_text':
+                                step.update({"type": "input_text", "element_path": (args_vals[0] if len(args_vals) > 0 else kwargs.get('element_path')), "text": (args_vals[1] if len(args_vals) > 1 else kwargs.get('text')), "role_name_list": (args_vals[2] if len(args_vals) > 2 else kwargs.get('role_name_list')) or []})
+                            elif method == 'hotkey':
+                                step.update({"type": "hotkey", "keys": (args_vals[0] if len(args_vals) > 0 else kwargs.get('keys')) or []})
+                            elif method == 'key_press':
+                                step.update({"type": "key_press", "key": (args_vals[0] if len(args_vals) > 0 else kwargs.get('key'))})
+                            elif method == 'key_release':
+                                step.update({"type": "key_release", "key": (args_vals[0] if len(args_vals) > 0 else kwargs.get('key'))})
+                            elif method == 'wait_for_element':
+                                step.update({"type": "wait_element", "element_path": (args_vals[0] if len(args_vals) > 0 else kwargs.get('element_path')), "timeout": (args_vals[1] if len(args_vals) > 1 else kwargs.get('timeout', 30)), "role_name_list": (args_vals[2] if len(args_vals) > 2 else kwargs.get('role_name_list')) or []})
+                            elif method == 'wait_for_image':
+                                step.update({"type": "wait_image", "image_path": (args_vals[0] if len(args_vals) > 0 else kwargs.get('image_path')), "threshold": (args_vals[1] if len(args_vals) > 1 else kwargs.get('threshold', 0.8)), "timeout": (args_vals[2] if len(args_vals) > 2 else kwargs.get('timeout', 30)), "region": (args_vals[3] if len(args_vals) > 3 else kwargs.get('region'))})
+                            elif method == 'click_image':
+                                step.update({"type": "click_image", "image_path": (args_vals[0] if len(args_vals) > 0 else kwargs.get('image_path')), "threshold": (args_vals[1] if len(args_vals) > 1 else kwargs.get('threshold', 0.8)), "region": (args_vals[2] if len(args_vals) > 2 else kwargs.get('region'))})
+                            elif method == 'find_image':
+                                step.update({"type": "find_image", "image_path": (args_vals[0] if len(args_vals) > 0 else kwargs.get('image_path')), "threshold": (args_vals[1] if len(args_vals) > 1 else kwargs.get('threshold', 0.8)), "region": (args_vals[2] if len(args_vals) > 2 else kwargs.get('region'))})
+                            elif method == 'get_screenshot':
+                                step.update({"type": "get_screenshot", "region": (args_vals[0] if len(args_vals) > 0 else kwargs.get('region'))})
+                            else:
+                                return
+
+                            if 'type' in step:
+                                self.steps.append(step)
+                    finally:
+                        self.generic_visit(node)
+
+            tree = ast.parse(script_content)
+            visitor = OpRecordAstVisitor()
+            visitor.visit(tree)
+
+            json_script: Dict[str, Any] = {"steps": visitor.steps}
+
+            if visitor.target_machine_ip:
+                json_script['target_machine_ip'] = visitor.target_machine_ip
+            if visitor.target_app_name:
+                json_script['target_app_name'] = visitor.target_app_name
+
+            if 'target_machine_ip' not in json_script or 'target_app_name' not in json_script:
+                if default_machine_id and default_app_name:
+                    json_script['target_machine_ip'] = self._get_machine_ip_by_id(default_machine_id)
+                    json_script['target_app_name'] = default_app_name
+                else:
+                    return {"success": False, "error": "Python脚本中未设置目标机器和应用，且未提供默认值", "need_target_info": True}
+
+            return {"success": True, "data": json_script}
+
+        except SyntaxError as e:
+            return {"success": False, "error": f"Python语法错误: {e}"}
         except Exception as e:
-            return {
-                "success": False,
-                "error": f"解析Python脚本时发生异常: {str(e)}"
-            }
+            return {"success": False, "error": f"解析Python脚本时发生异常: {str(e)}"}
 
     def _get_machine_id_by_ip(self, machine_ip: str) -> Optional[str]:
         """

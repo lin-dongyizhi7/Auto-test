@@ -76,6 +76,18 @@ class ScriptRunResult(BaseModel):
     error: Optional[str] = None
     executionTime: Optional[int] = None
 
+class PythonScriptRunRequest(BaseModel):
+    script_content: str
+    target_machine_ip: Optional[str] = None
+    target_app_name: Optional[str] = None
+
+class PythonScriptConvertRequest(BaseModel):
+    script_content: str
+    script_name: str
+    description: Optional[str] = None
+    target_machine_ip: Optional[str] = None
+    target_app_name: Optional[str] = None
+
 # 脚本存储管理类
 class ScriptStorageManager:
     def __init__(self, info_file: str, store_dir: str):
@@ -502,4 +514,140 @@ async def export_script(script_id: str):
         return OperationResult(
             success=False,
             error=f"导出脚本失败: {str(e)}"
+        )
+
+@router.post("/python/run", response_model=OperationResult)
+async def run_python_script(request: PythonScriptRunRequest):
+    """运行Python脚本"""
+    global operation
+
+    try:
+        if not operation:
+            return OperationResult(
+                success=False,
+                error="操作引擎未初始化"
+            )
+        
+        logger.info("开始执行Python脚本")
+        
+        # 调用operation_multi_machine中的run_python_script方法
+        result = operation.run_python_script(
+            script_content=request.script_content,
+            target_machine_id=request.target_machine_ip,
+            target_app_name=request.target_app_name
+        )
+        
+        if result.get("success"):
+            logger.info("Python脚本执行成功")
+            return OperationResult(
+                success=True,
+                data=result.get("data"),
+                message="Python脚本执行成功"
+            )
+        else:
+            error_msg = result.get("error", "Python脚本执行失败")
+            logger.error(f"Python脚本执行失败: {error_msg}")
+            return OperationResult(
+                success=False,
+                error=error_msg
+            )
+        
+    except Exception as e:
+        logger.error(f"运行Python脚本失败: {e}")
+        return OperationResult(
+            success=False,
+            error=f"运行Python脚本失败: {str(e)}"
+        )
+
+@router.post("/python/validate", response_model=OperationResult)
+async def validate_python_script(request: PythonScriptRunRequest):
+    """验证Python脚本语法"""
+    global operation
+
+    try:
+        if not operation:
+            return OperationResult(
+                success=False,
+                error="操作引擎未初始化"
+            )
+        
+        # 调用operation_multi_machine中的validate_python_script方法
+        result = operation.validate_python_script(request.script_content)
+        
+        if result.get("success"):
+            return OperationResult(
+                success=True,
+                data=result.get("data"),
+                message="Python脚本语法正确"
+            )
+        else:
+            error_msg = result.get("error", "Python脚本语法错误")
+            return OperationResult(
+                success=False,
+                error=error_msg
+            )
+        
+    except Exception as e:
+        logger.error(f"验证Python脚本失败: {e}")
+        return OperationResult(
+            success=False,
+            error=f"验证Python脚本失败: {str(e)}"
+        )
+
+@router.post("/python/convert", response_model=OperationResult)
+async def convert_python_script(request: PythonScriptConvertRequest):
+    """将Python脚本转换为JSON脚本并保存"""
+    global operation
+
+    try:
+        if not operation:
+            return OperationResult(
+                success=False,
+                error="操作引擎未初始化"
+            )
+        
+        logger.info("开始转换Python脚本为JSON脚本")
+        
+        # 解析Python脚本为JSON格式
+        json_script = operation._parse_python_script(
+            request.script_content, 
+            request.target_machine_ip, 
+            request.target_app_name
+        )
+        
+        if not json_script.get("success"):
+            return OperationResult(
+                success=False,
+                error=json_script.get("error", "Python脚本解析失败")
+            )
+        
+        script_data = json_script["data"]
+        
+        # 将解析后的JSON脚本保存为JSON脚本
+        json_content = json.dumps(script_data, ensure_ascii=False, indent=2)
+        
+        # 创建JSON脚本
+        create_request = CreateScriptRequest(
+            name=request.script_name,
+            description=request.description or f"从Python脚本转换: {request.script_name}",
+            content=json_content,
+            target_app_name=script_data.get("target_app_name")
+        )
+        
+        # 保存脚本
+        saved_script = script_manager.create_script(create_request)
+        
+        logger.info(f"Python脚本转换成功，保存为JSON脚本: {saved_script.id}")
+        
+        return OperationResult(
+            success=True,
+            data=saved_script.model_dump(),
+            message=f"Python脚本已成功转换为JSON脚本: {saved_script.name}"
+        )
+        
+    except Exception as e:
+        logger.error(f"转换Python脚本失败: {e}")
+        return OperationResult(
+            success=False,
+            error=f"转换Python脚本失败: {str(e)}"
         )
