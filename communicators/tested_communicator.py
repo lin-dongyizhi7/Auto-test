@@ -20,6 +20,8 @@ import os
 import sys
 import argparse
 from typing import Dict, List, Optional, Set
+from .config import get_security_config
+from .crypto_utils import wrap_outgoing, unwrap_incoming
 from collections import OrderedDict
 from .machine_operator import MachineOperator
 
@@ -62,6 +64,10 @@ class TestedMachineCommunicator:
         
         # 线程管理
         self.server_thread = None
+        # 安全
+        sec = get_security_config()
+        self._enable_encryption = bool(sec.get("enable_encryption"))
+        self._shared_secret = sec.get("shared_secret") or ""
         
 
 
@@ -108,12 +114,14 @@ class TestedMachineCommunicator:
         """
         try:
             # 接收连接验证请求
-            request_data = test_server_socket.recv(1024).decode('utf-8')
-            self._emit_event("incoming_connection", {"from": str(test_server_addr), "raw": request_data})
-            if not request_data:
+            request_bytes = test_server_socket.recv(1024)
+            try:
+                request = unwrap_incoming(request_bytes, self._enable_encryption, self._shared_secret)
+            except Exception:
+                request = json.loads(request_bytes.decode('utf-8'))
+            self._emit_event("incoming_connection", {"from": str(test_server_addr), "raw": request})
+            if not request:
                 return False
-            
-            request = json.loads(request_data)
             if request.get("type") != "connection_request":
                 print(f"收到来自 {test_server_addr} 的无效连接请求类型: {request.get('type')}")
                 return False
@@ -157,7 +165,7 @@ class TestedMachineCommunicator:
                     "message": "连接已接受"
                 }
             }
-            test_server_socket.sendall(json.dumps(response).encode('utf-8'))
+            test_server_socket.sendall(wrap_outgoing(response, self._enable_encryption, self._shared_secret))
             
             # 发送机器注册请求
             registration_request = {
@@ -174,16 +182,18 @@ class TestedMachineCommunicator:
                     }
                 }
             }
-            test_server_socket.sendall(json.dumps(registration_request).encode('utf-8'))
+            test_server_socket.sendall(wrap_outgoing(registration_request, self._enable_encryption, self._shared_secret))
             print(f"发送机器注册请求: machine_id={self.machine_id}")
             
             # 等待注册响应
-            registration_response = test_server_socket.recv(1024).decode('utf-8')
-            if not registration_response:
+            registration_bytes = test_server_socket.recv(1024)
+            if not registration_bytes:
                 print("未收到机器注册响应")
                 return False
-            
-            registration_result = json.loads(registration_response)
+            try:
+                registration_result = unwrap_incoming(registration_bytes, self._enable_encryption, self._shared_secret)
+            except Exception:
+                registration_result = json.loads(registration_bytes.decode('utf-8'))
             if not registration_result.get("success"):
                 print(f"机器注册失败: {registration_result.get('error')}")
                 return False
@@ -320,7 +330,7 @@ class TestedMachineCommunicator:
                     "data": data
                 }
             }
-            self.test_server_socket.sendall(json.dumps(event_data).encode('utf-8'))
+            self.test_server_socket.sendall(wrap_outgoing(event_data, self._enable_encryption, self._shared_secret))
         except Exception as e:
             print(f"同步事件到服务器失败: {str(e)}")
 
@@ -341,7 +351,7 @@ class TestedMachineCommunicator:
                         "machine_id": self.machine_id
                     }
                 }
-                self.test_server_socket.sendall(json.dumps(app_registration_request).encode('utf-8'))
+                self.test_server_socket.sendall(wrap_outgoing(app_registration_request, self._enable_encryption, self._shared_secret))
                 print(f"同步应用 {app_name} 到测试服务器")
                 
         except Exception as e:
@@ -447,13 +457,15 @@ class TestedMachineCommunicator:
             # 保持连接，循环处理请求
             while self.test_server_connected and self.is_running:
                 # 接收请求数据（最大1MB）
-                request_data = self.test_server_socket.recv(1024 * 1024).decode('utf-8')
-                if not request_data:
+                request_bytes = self.test_server_socket.recv(1024 * 1024)
+                if not request_bytes:
                     print(f" {self.test_server_addr} 断开连接")
                     break
-
-                # 解析请求（JSON格式）
-                request = json.loads(request_data)
+                # 解析请求（JSON或加密信封）
+                try:
+                    request = unwrap_incoming(request_bytes, self._enable_encryption, self._shared_secret)
+                except Exception:
+                    request = json.loads(request_bytes.decode('utf-8'))
                 self._emit_event("client_request", {"from": str(self.test_server_addr), "type": request.get("type")})
 
                 # 处理不同类型的请求
@@ -506,7 +518,7 @@ class TestedMachineCommunicator:
                     # 处理主动断开连接请求
                     print(f"收到 {self.test_server_addr} 的断开连接请求")
                     response = {"success": True, "message": "连接已断开"}
-                    self.test_server_socket.sendall(json.dumps(response).encode('utf-8'))
+                    self.test_server_socket.sendall(wrap_outgoing(response, self._enable_encryption, self._shared_secret))
                     self.test_server_connected = False
                     self.test_server_socket = None
                     print(f"与测试服务器 {self.test_server_addr} 的连接已断开")
@@ -524,12 +536,15 @@ class TestedMachineCommunicator:
 
         except json.JSONDecodeError:
             error_msg = {"success": False, "error": "无效的JSON格式"}
-            self.test_server_socket.sendall(json.dumps(error_msg).encode('utf-8'))
+            self.test_server_socket.sendall(wrap_outgoing(error_msg, self._enable_encryption, self._shared_secret))
             self._emit_event("client_response", {"from": str(self.test_server_addr), "ok": False, "error": "JSONDecodeError"})
         except Exception as e:
             print(f"与测试服务器 {self.test_server_addr} 通信时发生错误: {str(e)}")
             self._emit_event("server_error", {"test_server_addr": str(self.test_server_addr), "error": str(e)})
-            self.test_server_socket.sendall(json.dumps(response).encode('utf-8'))
+            try:
+                self.test_server_socket.sendall(wrap_outgoing(response, self._enable_encryption, self._shared_secret))
+            except Exception:
+                pass
             self.test_server_connected = False
             self.test_server_socket = None
             print(f"与测试服务器 {self.test_server_addr} 的连接已断开")

@@ -8,6 +8,8 @@ import io
 import threading
 import queue
 from typing import Dict, List, Optional, Set, Tuple, Any
+from .config import get_security_config
+from .crypto_utils import wrap_outgoing, unwrap_incoming
 from dataclasses import dataclass
 from enum import Enum
 
@@ -64,6 +66,10 @@ class TestMachineCommunicator:
         # 连接状态监控
         self.connection_status = {}
         self.last_heartbeat = {}
+        # 安全
+        sec = get_security_config()
+        self._enable_encryption = bool(sec.get("enable_encryption"))
+        self._shared_secret = sec.get("shared_secret") or ""
         
     def start_server(self) -> None:
         """启动测试服务器，监听多机器连接"""
@@ -94,14 +100,16 @@ class TestMachineCommunicator:
             # 保持连接，处理请求
             while self.is_running and machine_id in self.connections:
                 try:
-                    data = client_socket.recv(1024 * 1024).decode('utf-8')
-                    if not data:
+                    data_bytes = client_socket.recv(1024 * 1024)
+                    if not data_bytes:
                         break
-                    
-                    request = json.loads(data)
+                    try:
+                        request = unwrap_incoming(data_bytes, self._enable_encryption, self._shared_secret)
+                    except Exception:
+                        request = json.loads(data_bytes.decode('utf-8'))
                     response = self._handle_request(machine_id, request)
                     if response:
-                        client_socket.sendall(json.dumps(response).encode('utf-8'))
+                        client_socket.sendall(wrap_outgoing(response, self._enable_encryption, self._shared_secret))
                     
                     # 更新最后活跃时间
                     if machine_id in self.machines:
@@ -147,26 +155,32 @@ class TestMachineCommunicator:
                 }
             }
             print(f"发送连接请求: {connection_request}")
-            client_socket.sendall(json.dumps(connection_request).encode('utf-8'))
+            client_socket.sendall(wrap_outgoing(connection_request, self._enable_encryption, self._shared_secret))
 
             # 等待连接确认响应
-            response = client_socket.recv(1024).decode('utf-8')
-            if not response:
+            response_bytes = client_socket.recv(1024)
+            if not response_bytes:
                 client_socket.close()
                 return {"success": False, "error": "连接后未收到响应"}
 
-            response_data = json.loads(response)
+            try:
+                response_data = unwrap_incoming(response_bytes, self._enable_encryption, self._shared_secret)
+            except Exception:
+                response_data = json.loads(response_bytes.decode('utf-8'))
             if not response_data.get("success"):
                 client_socket.close()
                 return {"success": False, "error": response_data.get("error", "连接被拒绝")}
 
             # 等待机器注册请求
-            registration_data = client_socket.recv(1024).decode('utf-8')
-            if not registration_data:
+            registration_bytes = client_socket.recv(1024)
+            if not registration_bytes:
                 client_socket.close()
                 return {"success": False, "error": "未收到机器注册请求"}
 
-            registration_request = json.loads(registration_data)
+            try:
+                registration_request = unwrap_incoming(registration_bytes, self._enable_encryption, self._shared_secret)
+            except Exception:
+                registration_request = json.loads(registration_bytes.decode('utf-8'))
             if registration_request.get("type") != "machine_registration":
                 client_socket.close()
                 return {"success": False, "error": "收到无效的注册请求"}
@@ -316,7 +330,7 @@ class TestMachineCommunicator:
             }
             
             if client_socket:
-                client_socket.sendall(json.dumps(response).encode('utf-8'))
+                client_socket.sendall(wrap_outgoing(response, self._enable_encryption, self._shared_secret))
             
             return {"success": True, "machine_id": actual_machine_id}
             
@@ -535,11 +549,14 @@ class TestMachineCommunicator:
                 "timestamp": time.time()
             }
             
-            socket.sendall(json.dumps(request).encode('utf-8'))
+            socket.sendall(wrap_outgoing(request, self._enable_encryption, self._shared_secret))
             
             # 接收响应
-            response_data = socket.recv(4096 * 1024).decode('utf-8')
-            return json.loads(response_data)
+            response_bytes = socket.recv(4096 * 1024)
+            try:
+                return unwrap_incoming(response_bytes, self._enable_encryption, self._shared_secret)
+            except Exception:
+                return json.loads(response_bytes.decode('utf-8'))
             
         except Exception as e:
             # 视为意外断开，立即清理该机器连接
@@ -581,7 +598,7 @@ class TestMachineCommunicator:
                                     "source_machine": event.source_machine
                                 }
                             }
-                            socket.sendall(json.dumps(event_data).encode('utf-8'))
+                            socket.sendall(wrap_outgoing(event_data, self._enable_encryption, self._shared_secret))
                         except Exception as e:
                             print(f"向机器 {machine_id} 推送事件失败: {str(e)}")
                             # 移除失效的订阅者
