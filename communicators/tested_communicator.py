@@ -468,6 +468,12 @@ class TestedMachineCommunicator:
                     request = json.loads(request_bytes.decode('utf-8'))
                 self._emit_event("client_request", {"from": str(self.test_server_addr), "type": request.get("type")})
 
+                def addResponseType(response):
+                    return {
+                        "type": f"{request['type']}_response",
+                        "data": response
+                    }
+                
                 # 处理不同类型的请求
                 if request["type"] == "get_app_region":
                     app_name = request["data"].get("app_name")
@@ -531,6 +537,7 @@ class TestedMachineCommunicator:
 
                 # 发送响应
                 if not request["type"].endswith("_response"):
+                    response = addResponseType(response)
                     self.test_server_socket.sendall(json.dumps(response).encode('utf-8'))
                     self._emit_event("client_response", {"from": str(self.test_server_addr), "ok": bool(response.get("success"))})
 
