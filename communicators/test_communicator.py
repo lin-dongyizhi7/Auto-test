@@ -1,3 +1,11 @@
+'''
+Author: 凛冬已至 2985956026@qq.com
+Date: 2025-09-02 14:47:47
+LastEditors: 凛冬已至 2985956026@qq.com
+LastEditTime: 2025-09-24 12:41:12
+FilePath: \Auto-test\communicators\test_communicator.py
+Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
+'''
 import socket
 import json
 import time
@@ -66,6 +74,11 @@ class TestMachineCommunicator:
         # 连接状态监控
         self.connection_status = {}
         self.last_heartbeat = {}
+        
+        # 响应等待机制
+        self.response_waiters: Dict[str, Dict] = {}  # request_id -> waiter_info
+        self.response_lock = threading.Lock()
+        
         # 安全
         sec = get_security_config()
         self._enable_encryption = bool(sec.get("enable_encryption"))
@@ -107,7 +120,11 @@ class TestMachineCommunicator:
                         request = unwrap_incoming(data_bytes, self._enable_encryption, self._shared_secret)
                     except Exception:
                         request = json.loads(data_bytes.decode('utf-8'))
+                    
+                    # 处理所有消息（包括响应类消息）
                     response = self._handle_request(machine_id, request)
+                    
+                    # 只对需要回复的消息发送响应
                     if response and "flag" in response:
                         client_socket.sendall(wrap_outgoing(response, self._enable_encryption, self._shared_secret))
                     
@@ -238,6 +255,8 @@ class TestMachineCommunicator:
     def _handle_request(self, machine_id: str, request: Dict) -> Dict:
         """处理来自机器的请求"""
         request_type = request.get("type")
+        request_id = request.get("request_id")
+        
         # 处理来自目标机器的响应类消息（如 get_element_response 等）
         if isinstance(request_type, str) and request_type.endswith("_response"):
             payload = request.get("data", {}) if isinstance(request.get("data"), dict) else request
@@ -268,6 +287,14 @@ class TestMachineCommunicator:
                 else:
                     print(f"[{machine_id}] {base_action} 失败: {error_msg}")
 
+            # 如果有请求ID，尝试投递到等待器
+            if request_id:
+                if self._deliver_response(request_id, payload):
+                    print(f"响应已投递到等待器: {request_id}")
+                    return None  # 响应已投递，不需要返回
+                else:
+                    print(f"未找到对应的等待器: {request_id}")
+            
             # 返回响应数据给等待的进程
             return payload
         
@@ -537,7 +564,7 @@ class TestMachineCommunicator:
         return {"success": True, "timestamp": time.time()}
     
     def _forward_request_to_machine(self, machine_id: str, request_type: str, data: Dict) -> Dict:
-        """转发请求到指定机器"""
+        """转发请求到指定机器，通过响应等待机制获取结果"""
         if machine_id not in self.connections:
             return {"success": False, "error": f"机器 {machine_id} 未连接"}
         
@@ -546,17 +573,20 @@ class TestMachineCommunicator:
             request = {
                 "type": request_type,
                 "data": data,
-                "timestamp": time.time()
+                "timestamp": time.time(),
+                "request_id": f"{machine_id}_{int(time.time() * 1000)}"  # 添加请求ID
             }
             
-            socket.sendall(wrap_outgoing(request, self._enable_encryption, self._shared_secret))
+            # 创建响应等待器
+            response_waiter = self._create_response_waiter(machine_id, request["request_id"])
             
-            # 接收响应
-            response_bytes = socket.recv(4096 * 1024)
-            try:
-                return unwrap_incoming(response_bytes, self._enable_encryption, self._shared_secret)
-            except Exception:
-                return json.loads(response_bytes.decode('utf-8'))
+            # 发送请求
+            socket.sendall(wrap_outgoing(request, self._enable_encryption, self._shared_secret))
+            print(f"已发送请求到机器 {machine_id}: {request_type}")
+            
+            # 等待响应
+            response = self._wait_for_response(response_waiter, timeout=30)
+            return response
             
         except Exception as e:
             # 视为意外断开，立即清理该机器连接
@@ -565,6 +595,43 @@ class TestMachineCommunicator:
             except Exception:
                 pass
             return {"success": False, "error": f"转发请求失败: {str(e)}"}
+    
+    def _create_response_waiter(self, machine_id: str, request_id: str) -> Dict:
+        """创建响应等待器"""
+        with self.response_lock:
+            waiter = {
+                "machine_id": machine_id,
+                "request_id": request_id,
+                "response": None,
+                "event": threading.Event(),
+                "created_at": time.time()
+            }
+            self.response_waiters[request_id] = waiter
+            return waiter
+    
+    def _wait_for_response(self, waiter: Dict, timeout: int = 30) -> Dict:
+        """等待响应"""
+        try:
+            # 等待响应事件
+            if waiter["event"].wait(timeout):
+                return waiter["response"]
+            else:
+                return {"success": False, "error": "等待响应超时"}
+        finally:
+            # 清理等待器
+            with self.response_lock:
+                if waiter["request_id"] in self.response_waiters:
+                    del self.response_waiters[waiter["request_id"]]
+    
+    def _deliver_response(self, request_id: str, response: Dict) -> bool:
+        """投递响应到等待器"""
+        with self.response_lock:
+            if request_id in self.response_waiters:
+                waiter = self.response_waiters[request_id]
+                waiter["response"] = response
+                waiter["event"].set()
+                return True
+        return False
     
     def _publish_event(self, event: Event) -> None:
         """发布事件到所有订阅者"""

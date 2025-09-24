@@ -500,11 +500,18 @@ class TestedMachineCommunicator:
 
                 def addResponseType(response):
                     if 'type' in response and response['type']:
+                        # 如果响应已有type，添加请求ID
+                        if 'request_id' in request:
+                            response['request_id'] = request['request_id']
                         return response
-                    return {
+                    response_data = {
                         "type": f"{request['type']}_response",
                         "data": response
                     }
+                    # 添加请求ID
+                    if 'request_id' in request:
+                        response_data['request_id'] = request['request_id']
+                    return response_data
                 
                 # 处理不同类型的请求
                 if request["type"] == "get_app_region":
@@ -570,7 +577,9 @@ class TestedMachineCommunicator:
                 # 发送响应
                 if not request["type"].endswith("_response"):
                     response = addResponseType(response)
+                    print(f"发送响应: {response}")
                     self.test_server_socket.sendall(wrap_outgoing(response, self._enable_encryption, self._shared_secret))
+                    print(f"响应已发送到 {self.test_server_addr}")
                     self._emit_event("client_response", {"from": str(self.test_server_addr), "ok": bool(response.get("success"))})
 
         except json.JSONDecodeError:
