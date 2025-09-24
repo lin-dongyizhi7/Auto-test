@@ -104,6 +104,10 @@ SECURITY_CONFIG = {
     "allowed_hosts": [],         # 允许的主机列表（空表示允许所有）
     "max_request_size": 10 * 1024 * 1024,  # 最大请求大小（字节）
     "rate_limit": 100,           # 速率限制（请求/分钟）
+    # 加密配置（主控与测试机点对点 TCP 通信）
+    "enable_encryption": False,  # 启用后，对 TCP 负载进行 AES-GCM 加密
+    # 预共享密钥（可通过环境变量 AUTO_TEST_SHARED_SECRET 覆盖）
+    "shared_secret": os.environ.get("AUTO_TEST_SHARED_SECRET", ""),
 }
 
 # 性能配置
