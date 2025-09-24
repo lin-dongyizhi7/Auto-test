@@ -2,7 +2,7 @@
 Author: 凛冬已至 2985956026@qq.com
 Date: 2025-07-24 13:25:17
 LastEditors: 凛冬已至 2985956026@qq.com
-LastEditTime: 2025-09-09 16:17:13
+LastEditTime: 2025-09-24 10:39:01
 FilePath: \Auto-test\communicators\tested_communicator.py
 Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
 '''
@@ -500,11 +500,8 @@ class TestedMachineCommunicator:
 
                 def addResponseType(response):
                     if 'type' in response and response['type']:
-                        # 如果响应已有type，添加请求ID
-                        if 'request_id' in request:
-                            response['request_id'] = request['request_id']
                         return response
-                    response_data = {
+                    return {
                         "type": f"{request['type']}_response",
                         "data": response
                     }
@@ -577,9 +574,7 @@ class TestedMachineCommunicator:
                 # 发送响应
                 if not request["type"].endswith("_response"):
                     response = addResponseType(response)
-                    print(f"发送响应: {response}")
                     self.test_server_socket.sendall(wrap_outgoing(response, self._enable_encryption, self._shared_secret))
-                    print(f"响应已发送到 {self.test_server_addr}")
                     self._emit_event("client_response", {"from": str(self.test_server_addr), "ok": bool(response.get("success"))})
 
         except json.JSONDecodeError:
