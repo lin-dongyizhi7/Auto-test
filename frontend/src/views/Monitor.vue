@@ -109,20 +109,42 @@
       <el-col :span="8">
         <el-card class="log-card" shadow="hover">
           <template #header>
-            <span>实时操作日志</span>
+            <div class="log-header">
+              <span>实时日志</span>
+              <div class="log-controls">
+                <el-select v-model="selectedMachine" placeholder="选择机器" size="small" style="width: 120px">
+                  <el-option label="全部机器" value="" />
+                  <el-option 
+                    v-for="machine in machines" 
+                    :key="machine.id"
+                    :label="machine.address"
+                    :value="machine.id"
+                  />
+                </el-select>
+                <el-button size="small" @click="clearLogs">清空</el-button>
+                <el-button size="small" @click="toggleAutoScroll" :type="autoScroll ? 'primary' : 'default'">
+                  {{ autoScroll ? '停止' : '自动' }}
+                </el-button>
+              </div>
+            </div>
           </template>
           
-          <div class="log-content">
+          <div class="log-content" ref="logContainer">
             <div 
-              v-for="(log, index) in recentLogs" 
+              v-for="(log, index) in displayLogs" 
               :key="index"
               class="log-item"
+              :class="getLogLevelClass(log.level)"
             >
-              <div class="log-time">{{ getLogTime(log) }}</div>
-              <div class="log-message">{{ getLogMessage(log) }}</div>
+              <div class="log-header-item">
+                <span class="log-time">{{ formatLogTime(log.timestamp) }}</span>
+                <span class="log-machine">{{ log.machine_id }}</span>
+                <span class="log-level">{{ log.level }}</span>
+              </div>
+              <div class="log-message">{{ log.message }}</div>
             </div>
-            <div v-if="recentLogs.length === 0" class="no-logs">
-              <el-empty description="暂无操作日志" size="small" />
+            <div v-if="displayLogs.length === 0" class="no-logs">
+              <el-empty description="暂无日志" size="small" />
             </div>
           </div>
         </el-card>
@@ -181,7 +203,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useOperationStore } from '@/stores/operation'
 
@@ -192,6 +214,13 @@ const selectedTarget = ref('')
 const isMonitoring = ref(false)
 const monitoringInterval = ref<number | null>(null)
 const currentScreenshot = ref<any>(null)
+
+// 日志相关
+const selectedMachine = ref('')
+const autoScroll = ref(true)
+const logContainer = ref<HTMLElement>()
+const realTimeLogs = ref<any[]>([])
+const maxLogs = 200 // 最多显示200条日志
 
 // 模拟性能数据
 const cpuUsage = ref(45)
@@ -238,10 +267,25 @@ const recentLogs = computed(() => {
   return operationLogs.value.slice(-10).reverse()
 })
 
+const displayLogs = computed(() => {
+  let logs = realTimeLogs.value
+  
+  // 按机器过滤
+  if (selectedMachine.value) {
+    logs = logs.filter((log: any) => log.machine_id === selectedMachine.value)
+  }
+  
+  // 按时间排序（最新的在前）
+  logs = logs.sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+  
+  // 限制显示数量
+  return logs.slice(0, maxLogs)
+})
+
 const totalOperations = computed(() => operationLogs.value.length)
 const todayOperations = computed(() => {
   const today = new Date().toDateString()
-  return operationLogs.value.filter(log => {
+  return operationLogs.value.filter((log: any) => {
     const logDate = new Date().toDateString()
     return logDate === today
   }).length
@@ -308,9 +352,103 @@ const getLogMessage = (log: string) => {
   return messageMatch ? messageMatch[1] : log
 }
 
+// WebSocket连接
+let ws: WebSocket | null = null
+
+const connectWebSocket = () => {
+  try {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    const wsUrl = `${protocol}//${window.location.host}/api/logs/ws`
+    
+    ws = new WebSocket(wsUrl)
+    
+    ws.onopen = () => {
+      console.log('WebSocket连接已建立')
+    }
+    
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data)
+        if (data.type === 'log_update') {
+          addLog(data.data)
+        }
+      } catch (error) {
+        console.error('解析WebSocket消息失败:', error)
+      }
+    }
+    
+    ws.onclose = () => {
+      console.log('WebSocket连接已关闭')
+      // 5秒后重连
+      setTimeout(connectWebSocket, 5000)
+    }
+    
+    ws.onerror = (error) => {
+      console.error('WebSocket错误:', error)
+    }
+  } catch (error) {
+    console.error('WebSocket连接失败:', error)
+  }
+}
+
+const addLog = (log: any) => {
+  realTimeLogs.value.unshift(log)
+  
+  // 保持日志数量限制
+  if (realTimeLogs.value.length > maxLogs * 2) {
+    realTimeLogs.value = realTimeLogs.value.slice(0, maxLogs * 2)
+  }
+  
+  // 自动滚动到底部
+  if (autoScroll.value) {
+    nextTick(() => {
+      scrollToBottom()
+    })
+  }
+}
+
+const scrollToBottom = () => {
+  if (logContainer.value) {
+    logContainer.value.scrollTop = logContainer.value.scrollHeight
+  }
+}
+
+const clearLogs = () => {
+  realTimeLogs.value = []
+}
+
+const toggleAutoScroll = () => {
+  autoScroll.value = !autoScroll.value
+  if (autoScroll.value) {
+    nextTick(() => {
+      scrollToBottom()
+    })
+  }
+}
+
+const formatLogTime = (timestamp: string) => {
+  if (!timestamp) return '未知时间'
+  const date = new Date(timestamp)
+  return date.toLocaleTimeString('zh-CN')
+}
+
+const getLogLevelClass = (level: string) => {
+  const levelMap: Record<string, string> = {
+    'DEBUG': 'log-debug',
+    'INFO': 'log-info',
+    'WARNING': 'log-warning',
+    'ERROR': 'log-error',
+    'CRITICAL': 'log-critical'
+  }
+  return levelMap[level] || 'log-info'
+}
+
 // 生命周期
 onMounted(async () => {
   await operationStore.initialize()
+  
+  // 连接WebSocket
+  connectWebSocket()
   
   // 模拟性能数据更新
   setInterval(() => {
@@ -322,6 +460,9 @@ onMounted(async () => {
 
 onUnmounted(() => {
   stopMonitoring()
+  if (ws) {
+    ws.close()
+  }
 })
 </script>
 
@@ -427,6 +568,18 @@ onUnmounted(() => {
   }
 
   .log-card {
+    .log-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      
+      .log-controls {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
+    }
+    
     .log-content {
       max-height: 400px;
       overflow-y: auto;
@@ -434,21 +587,86 @@ onUnmounted(() => {
       .log-item {
         padding: 8px 0;
         border-bottom: 1px solid #f0f0f0;
+        border-left: 3px solid transparent;
         
         &:last-child {
           border-bottom: none;
         }
         
-        .log-time {
-          font-size: 12px;
-          color: #909399;
+        .log-header-item {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
           margin-bottom: 4px;
+          
+          .log-time {
+            font-size: 11px;
+            color: #909399;
+          }
+          
+          .log-machine {
+            font-size: 11px;
+            color: #409eff;
+            background: #ecf5ff;
+            padding: 2px 6px;
+            border-radius: 3px;
+          }
+          
+          .log-level {
+            font-size: 11px;
+            font-weight: bold;
+            padding: 2px 6px;
+            border-radius: 3px;
+          }
         }
         
         .log-message {
-          font-size: 14px;
+          font-size: 13px;
           color: #606266;
           word-break: break-all;
+          line-height: 1.4;
+        }
+        
+        // 日志级别样式
+        &.log-debug {
+          border-left-color: #909399;
+          .log-level {
+            background: #f4f4f5;
+            color: #909399;
+          }
+        }
+        
+        &.log-info {
+          border-left-color: #409eff;
+          .log-level {
+            background: #ecf5ff;
+            color: #409eff;
+          }
+        }
+        
+        &.log-warning {
+          border-left-color: #e6a23c;
+          .log-level {
+            background: #fdf6ec;
+            color: #e6a23c;
+          }
+        }
+        
+        &.log-error {
+          border-left-color: #f56c6c;
+          .log-level {
+            background: #fef0f0;
+            color: #f56c6c;
+          }
+        }
+        
+        &.log-critical {
+          border-left-color: #f56c6c;
+          background: #fef0f0;
+          .log-level {
+            background: #f56c6c;
+            color: white;
+          }
         }
       }
       
