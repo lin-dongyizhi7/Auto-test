@@ -32,6 +32,7 @@ from routes.server import router as server_router, set_global_state as set_serve
 from routes.machine import router as machine_router, set_global_state as set_machine_state
 from routes.operation import router as operation_router, set_global_state as set_operation_state
 from routes.script import router as script_router, set_global_state as set_script_state
+from routes.logs import router as logs_router, set_global_state as set_logs_state
 
 # 配置日志
 logging.basicConfig(
@@ -139,6 +140,7 @@ async def lifespan(app: FastAPI):
         set_machine_state(communicator, operation, is_running)
         set_operation_state(communicator, operation, is_running)
         set_script_state(communicator, operation, is_running)
+        set_logs_state(communicator, operation, is_running)
         
         logger.info("测试服务器已默认启动，监听端口: 8888")
 
@@ -205,6 +207,7 @@ app.include_router(server_router)
 app.include_router(machine_router)
 app.include_router(operation_router)
 app.include_router(script_router)
+app.include_router(logs_router)
 
 
 

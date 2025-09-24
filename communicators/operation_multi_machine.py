@@ -281,8 +281,7 @@ class MultiMachineOperation:
             "mouse_click",
             {"x": loc["center_x"], "y": loc["center_y"], "button": "left"}
         ))
-        
-        self.finish_current_opts(commands)
+        print(commands)
         return commands
     
     def right_click_element(self, element_path: str, role_name_list: Optional[List[str]] = None) -> List[Dict]:
@@ -308,7 +307,6 @@ class MultiMachineOperation:
             {"x": loc["center_x"], "y": loc["center_y"], "button": "right"}
         ))
         
-        self.finish_current_opts(commands)
         return commands
     
     def double_click_element(self, element_path: str, role_name_list: Optional[List[str]] = None) -> List[Dict]:
@@ -331,15 +329,9 @@ class MultiMachineOperation:
         
         commands.append(self._generate_command(
             "mouse_click",
-            {"x": loc["center_x"], "y": loc["center_y"], "button": "left"}
+            {"x": loc["center_x"], "y": loc["center_y"], "button": "left", "clicks": 2}
         ))
         
-        commands.append(self._generate_command(
-            "mouse_click",
-            {"x": loc["center_x"], "y": loc["center_y"], "button": "left"}
-        ))
-        
-        self.finish_current_opts(commands)
         return commands
     
     def move_to(self, x: int, y: int) -> Dict:
@@ -494,7 +486,6 @@ class MultiMachineOperation:
                 {"key": char}
             ))
         
-        self.finish_current_opts(commands)
         return commands
     
     def hotkey(self, keys: List[str]) -> Dict:
@@ -763,21 +754,45 @@ class MultiMachineOperation:
         role_name_list = step.get("role_name_list")
 
         if step_type == "click_element":
-            self.click_element(element_path, role_name_list)
-            return {"success": True}
+            try:
+                commands = self.click_element(element_path, role_name_list)
+                if commands:
+                    result = self._execute_commands_on_target(commands)
+                    return result
+                return {"success": True}
+            except Exception as e:
+                return {"success": False, "error": f"点击元素失败: {str(e)}"}
         if step_type == "right_click_element":
-            self.right_click_element(element_path, role_name_list)
-            return {"success": True}
+            try:
+                commands = self.right_click_element(element_path, role_name_list)
+                if commands:
+                    result = self._execute_commands_on_target(commands)
+                    return result
+                return {"success": True}
+            except Exception as e:
+                return {"success": False, "error": f"右键点击元素失败: {str(e)}"}
         if step_type == "double_click_element":
-            self.double_click_element(element_path, role_name_list)
-            return {"success": True}
+            try:
+                commands = self.double_click_element(element_path, role_name_list)
+                if commands:
+                    result = self._execute_commands_on_target(commands)
+                    return result
+                return {"success": True}
+            except Exception as e:
+                return {"success": False, "error": f"双击元素失败: {str(e)}"}
         if step_type == "move_to_element_center":
             res = self.move_to_element_center(element_path, role_name_list)
             return res if isinstance(res, dict) else {"success": True}
         if step_type == "input_text":
             text = step.get("text", "")
-            self.input_text(element_path, text, role_name_list)
-            return {"success": True}
+            try:
+                commands = self.input_text(element_path, text, role_name_list)
+                if commands:
+                    result = self._execute_commands_on_target(commands)
+                    return result
+                return {"success": True}
+            except Exception as e:
+                return {"success": False, "error": f"输入文本失败: {str(e)}"}
         if step_type == "hotkey":
             keys = step.get("keys") or []
             return self.hotkey(keys)

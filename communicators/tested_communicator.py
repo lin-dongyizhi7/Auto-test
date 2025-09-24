@@ -24,6 +24,7 @@ from .config import get_security_config
 from .crypto_utils import wrap_outgoing, unwrap_incoming
 from collections import OrderedDict
 from .machine_operator import MachineOperator
+from .log_collector import init_global_logging, cleanup_global_logging, get_global_collector
 
 
 class TestedMachineCommunicator:
@@ -73,6 +74,9 @@ class TestedMachineCommunicator:
 
         # 本地UI事件队列（供可视化界面消费）
         self.ui_event_queue: "queue.Queue" = queue.Queue()
+        
+        # 日志收集器
+        self.log_collector = None
 
     def _get_app_region(self, app_name: str) -> Optional[List[int]]:
         """获取指定应用的窗口信息（位置和大小）"""
@@ -269,16 +273,38 @@ class TestedMachineCommunicator:
         if app_name not in self.machine_operator.apps:
             return {"success": False, "error": f"应用 {app_name} 未注册"}
         
-        return self._execute_commands(app_name, commands)
+        # 记录命令执行日志
+        if self.log_collector:
+            command_count = len(commands)
+            self.log_collector.add_log("INFO", f"开始执行 {command_count} 个命令，应用: {app_name}", "command_execution")
+        
+        result = self._execute_commands(app_name, commands)
+        
+        # 记录执行结果
+        if self.log_collector:
+            if result.get("success"):
+                self.log_collector.add_log("INFO", f"命令执行成功，应用: {app_name}", "command_execution")
+            else:
+                error_msg = result.get("error", "未知错误")
+                self.log_collector.add_log("ERROR", f"命令执行失败: {error_msg}，应用: {app_name}", "command_execution")
+        
+        return result
 
     def register_app(self, app_name: str, app_info: Dict = None) -> bool:
         """注册应用"""
         success = self.machine_operator.register_app(app_name, app_info)
         
         if success:
+            # 记录日志
+            if self.log_collector:
+                self.log_collector.add_log("INFO", f"应用 {app_name} 注册成功", "app_registration")
+            
             # 如果连接到测试服务器，同步应用注册事件
             if self.test_server_connected:
                 self._sync_event_to_server("app_launched", app_name, {"app_info": app_info or {}})
+        else:
+            if self.log_collector:
+                self.log_collector.add_log("ERROR", f"应用 {app_name} 注册失败", "app_registration")
         
         return success
 
@@ -375,6 +401,10 @@ class TestedMachineCommunicator:
         :param app_names: 被测应用名称列表（可选）
         """
         try:
+            # 初始化日志收集器
+            self.log_collector = init_global_logging(self.machine_id)
+            print(f"日志收集器已启动，机器ID: {self.machine_id}")
+            
             # 绑定端口并开始监听
             self.server_socket.bind((self.bind_host, self.bind_port))
             self.server_socket.listen(5)  # 最大等待连接数
@@ -469,6 +499,8 @@ class TestedMachineCommunicator:
                 self._emit_event("client_request", {"from": str(self.test_server_addr), "type": request.get("type")})
 
                 def addResponseType(response):
+                    if 'type' in response and response['type']:
+                        return response
                     return {
                         "type": f"{request['type']}_response",
                         "data": response
@@ -538,7 +570,7 @@ class TestedMachineCommunicator:
                 # 发送响应
                 if not request["type"].endswith("_response"):
                     response = addResponseType(response)
-                    self.test_server_socket.sendall(json.dumps(response).encode('utf-8'))
+                    self.test_server_socket.sendall(wrap_outgoing(response, self._enable_encryption, self._shared_secret))
                     self._emit_event("client_response", {"from": str(self.test_server_addr), "ok": bool(response.get("success"))})
 
         except json.JSONDecodeError:
@@ -576,6 +608,12 @@ class TestedMachineCommunicator:
     def stop(self) -> None:
         """停止通信服务"""
         self.is_running = False
+        
+        # 停止日志收集器
+        if self.log_collector:
+            cleanup_global_logging()
+            self.log_collector = None
+            print("日志收集器已停止")
         
         # 关闭测试服务器连接
         if self.test_server_socket:

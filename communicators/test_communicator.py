@@ -108,7 +108,7 @@ class TestMachineCommunicator:
                     except Exception:
                         request = json.loads(data_bytes.decode('utf-8'))
                     response = self._handle_request(machine_id, request)
-                    if response:
+                    if response and "flag" in response:
                         client_socket.sendall(wrap_outgoing(response, self._enable_encryption, self._shared_secret))
                     
                     # 更新最后活跃时间
@@ -268,8 +268,8 @@ class TestMachineCommunicator:
                 else:
                     print(f"[{machine_id}] {base_action} 失败: {error_msg}")
 
-            # 响应类消息仅记录日志，不再回发结果
-            return None
+            # 返回响应数据给等待的进程
+            return payload
         
         if request_type == "machine_registration":
             return None
@@ -295,7 +295,7 @@ class TestMachineCommunicator:
             responseData =  self._handle_heartbeat(machine_id, request)
         else:
             responseData =  {"success": False, "error": f"未知请求类型: {request_type}"}
-        return {"type": f'{request_type}_response', "data": responseData}
+        return {"type": f'{request_type}_response', "data": responseData, "flag": 'response'}
     
     def _handle_machine_registration(self, client_socket: socket.socket, request: Dict) -> Dict:
         """处理机器注册请求"""
