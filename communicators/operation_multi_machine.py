@@ -572,6 +572,15 @@ class MultiMachineOperation:
         
         return {"success": False, "error": f"等待图片 {image_path} 超时"}
     
+    def validate_result(self, result: Dict) -> Dict:
+        """
+        验证结果
+        
+        :param result: 结果
+        :return: 结果
+        """
+        return True
+
     # ==================== 指令执行管理 ====================
     
     def _execute_commands_on_target(self, commands: List[Dict]) -> Dict:

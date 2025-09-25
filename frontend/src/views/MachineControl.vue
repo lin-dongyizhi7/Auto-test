@@ -106,12 +106,17 @@ const selectApp = (app: any) => {
   currentApp.value = app
 }
 
+const applyStatus = ref(false)
 const applyTarget = async () => {
+  applyStatus.value = false
   if (!currentApp.value) return
   applying.value = true
   try {
     const res = await setTarget({ machine_id: machineId, app_name: currentApp.value.name })
-    if (res.success) ElMessage.success('目标已设置')
+    if (res.success) {
+      ElMessage.success('目标已设置')
+      applyStatus.value = true
+    }
     else ElMessage.error(res.message || '设置失败')
   } finally {
     applying.value = false

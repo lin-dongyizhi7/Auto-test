@@ -18,6 +18,7 @@ import queue
 from typing import Dict, List, Optional, Set, Tuple, Any
 from .config import get_security_config
 from .crypto_utils import wrap_outgoing, unwrap_incoming
+from .protocol import MessageTypes, PROTOCOL_VERSION, basic_validate_message, is_response_message
 from dataclasses import dataclass
 from enum import Enum
 
@@ -120,6 +121,20 @@ class TestMachineCommunicator:
                         request = unwrap_incoming(data_bytes, self._enable_encryption, self._shared_secret)
                     except Exception:
                         request = json.loads(data_bytes.decode('utf-8'))
+                    # 基础校验与版本比对
+                    validate = basic_validate_message(request)
+                    if not validate.get("success"):
+                        error_msg = {"success": False, "error": f"非法消息: {validate.get('error')}", "protocol_version": PROTOCOL_VERSION}
+                        try:
+                            client_socket.sendall(wrap_outgoing(error_msg, self._enable_encryption, self._shared_secret))
+                        except Exception:
+                            pass
+                        continue
+                    req_ver = request.get("protocol_version")
+                    if not req_ver:
+                        print("警告: 收到未携带协议版本的消息，将按当前版本兼容处理")
+                    elif req_ver != PROTOCOL_VERSION:
+                        print(f"警告: 收到协议版本不匹配的消息，对端={req_ver}, 本端={PROTOCOL_VERSION}，尝试兼容处理")
                     
                     # 处理所有消息（包括响应类消息）
                     response = self._handle_request(machine_id, request)
@@ -164,12 +179,13 @@ class TestMachineCommunicator:
 
             # 发送连接请求
             connection_request = {
-                "type": "connection_request",
+                "type": MessageTypes.CONNECTION_REQUEST,
                 "data": {
                     "server_host": self.server_host,
                     "server_port": self.server_port,
                     "server_id": self.server_id
-                }
+                },
+                "protocol_version": PROTOCOL_VERSION
             }
             print(f"发送连接请求: {connection_request}")
             client_socket.sendall(wrap_outgoing(connection_request, self._enable_encryption, self._shared_secret))
@@ -198,7 +214,7 @@ class TestMachineCommunicator:
                 registration_request = unwrap_incoming(registration_bytes, self._enable_encryption, self._shared_secret)
             except Exception:
                 registration_request = json.loads(registration_bytes.decode('utf-8'))
-            if registration_request.get("type") != "machine_registration":
+            if registration_request.get("type") != MessageTypes.MACHINE_REGISTRATION:
                 client_socket.close()
                 return {"success": False, "error": "收到无效的注册请求"}
 
@@ -298,31 +314,31 @@ class TestMachineCommunicator:
             # 返回响应数据给等待的进程
             return payload
         
-        if request_type == "machine_registration":
+        if request_type == MessageTypes.MACHINE_REGISTRATION:
             return None
-        elif request_type == "register_app":
+        elif request_type == MessageTypes.REGISTER_APP:
             responseData =  self._handle_app_registration(machine_id, request)
-        elif request_type == "get_screenshot":
+        elif request_type == MessageTypes.GET_SCREENSHOT:
             responseData =  self._handle_screenshot_request(machine_id, request)
-        elif request_type == "get_element":
+        elif request_type == MessageTypes.GET_ELEMENT:
             responseData =  self._handle_element_request(machine_id, request)
-        elif request_type == "exec_commands":
+        elif request_type == MessageTypes.EXEC_COMMANDS:
             responseData =  self._handle_command_execution(machine_id, request)
-        elif request_type == "subscribe_events":
+        elif request_type == MessageTypes.SUBSCRIBE_EVENTS:
             responseData =  self._handle_event_subscription(machine_id, request)
-        elif request_type == "unsubscribe_events":
+        elif request_type == MessageTypes.UNSUBSCRIBE_EVENTS:
             responseData =  self._handle_event_unsubscription(machine_id, request)
         elif request_type == "get_machines":
             responseData =  self._handle_get_machines_request()
         elif request_type == "get_apps":
             responseData =  self._handle_get_apps_request()
-        elif request_type == "sync_event":
+        elif request_type == MessageTypes.EVENT_SYNC:
             responseData =  self._handle_event_sync(machine_id, request)
-        elif request_type == "heartbeat":
+        elif request_type == MessageTypes.HEARTBEAT:
             responseData =  self._handle_heartbeat(machine_id, request)
         else:
             responseData =  {"success": False, "error": f"未知请求类型: {request_type}"}
-        return {"type": f'{request_type}_response', "data": responseData, "flag": 'response'}
+        return {"type": f'{request_type}_response', "data": responseData, "flag": 'response', "protocol_version": PROTOCOL_VERSION}
     
     def _handle_machine_registration(self, client_socket: socket.socket, request: Dict) -> Dict:
         """处理机器注册请求"""
@@ -418,7 +434,7 @@ class TestMachineCommunicator:
             return {"success": False, "error": f"应用 {app_name} 未在机器 {machine_id} 上注册"}
         
         # 转发请求到对应机器
-        return self._forward_request_to_machine(machine_id, "get_screenshot", {
+        return self._forward_request_to_machine(machine_id, MessageTypes.GET_SCREENSHOT, {
             "app_name": app_name,
             "region": region
         })
@@ -437,7 +453,7 @@ class TestMachineCommunicator:
             return {"success": False, "error": f"应用 {app_name} 未在机器 {machine_id} 上注册"}
         
         # 转发请求到对应机器
-        return self._forward_request_to_machine(machine_id, "get_element", {
+        return self._forward_request_to_machine(machine_id, MessageTypes.GET_ELEMENT, {
             "app_name": app_name,
             "element_path": element_path,
             "role_name_list": role_name_list
@@ -466,7 +482,7 @@ class TestMachineCommunicator:
         ))
         
         # 转发请求到对应机器
-        result = self._forward_request_to_machine(machine_id, "exec_commands", {
+        result = self._forward_request_to_machine(machine_id, MessageTypes.EXEC_COMMANDS, {
             "app_name": app_name,
             "commands": commands
         })
@@ -574,7 +590,8 @@ class TestMachineCommunicator:
                 "type": request_type,
                 "data": data,
                 "timestamp": time.time(),
-                "request_id": f"{machine_id}_{int(time.time() * 1000)}"  # 添加请求ID
+                "request_id": f"{machine_id}_{int(time.time() * 1000)}",
+                "protocol_version": PROTOCOL_VERSION
             }
             
             # 创建响应等待器
@@ -654,8 +671,8 @@ class TestMachineCommunicator:
                     if machine_id in self.connections:
                         try:
                             socket = self.connections[machine_id]
-                            event_data = {
-                                "type": "event_notification",
+            event_data = {
+                                "type": MessageTypes.EVENT_NOTIFICATION,
                                 "data": {
                                     "event_type": event.type.value,
                                     "machine_id": event.machine_id,
@@ -663,7 +680,8 @@ class TestMachineCommunicator:
                                     "timestamp": event.timestamp,
                                     "data": event.data,
                                     "source_machine": event.source_machine
-                                }
+                                },
+                                "protocol_version": PROTOCOL_VERSION
                             }
                             socket.sendall(wrap_outgoing(event_data, self._enable_encryption, self._shared_secret))
                         except Exception as e:
@@ -899,7 +917,8 @@ class SingleMachineCommunicator:
             request = {
                 "type": request_type,
                 "data": data,
-                "timestamp": time.time()
+                "timestamp": time.time(),
+                "protocol_version": PROTOCOL_VERSION
             }
             sendJson = json.dumps(request).encode('utf-8')
             print(f"发送请求: {request_type}, 数据: {data}")
