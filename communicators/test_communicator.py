@@ -671,7 +671,7 @@ class TestMachineCommunicator:
                     if machine_id in self.connections:
                         try:
                             socket = self.connections[machine_id]
-            event_data = {
+                            event_data = {
                                 "type": MessageTypes.EVENT_NOTIFICATION,
                                 "data": {
                                     "event_type": event.type.value,

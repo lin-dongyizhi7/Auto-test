@@ -9,10 +9,10 @@
       "description": "通过新建连接添加的机器",
       "status": "disconnected",
       "created_at": "2025-09-09T16:07:42.501941",
-      "updated_at": "2025-09-24T14:05:04.904265",
-      "last_connected_at": "2025-09-24T14:03:18.079005",
-      "last_disconnected_at": "2025-09-24T14:05:04.904296",
-      "connection_count": 10,
+      "updated_at": "2025-09-25T19:56:43.424126",
+      "last_connected_at": "2025-09-25T19:55:59.010162",
+      "last_disconnected_at": "2025-09-25T19:56:43.424136",
+      "connection_count": 11,
       "registered_id": "test_machine_001"
     }
   ]
