@@ -2,7 +2,7 @@
 Author: 凛冬已至 2985956026@qq.com
 Date: 2025-07-24 13:25:17
 LastEditors: 凛冬已至 2985956026@qq.com
-LastEditTime: 2025-09-24 10:39:01
+LastEditTime: 2025-09-25 17:45:20
 FilePath: \Auto-test\communicators\tested_communicator.py
 Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
 '''
@@ -25,6 +25,7 @@ from .crypto_utils import wrap_outgoing, unwrap_incoming
 from collections import OrderedDict
 from .machine_operator import MachineOperator
 from .log_collector import init_global_logging, cleanup_global_logging, get_global_collector
+from .protocol import MessageTypes, PROTOCOL_VERSION, basic_validate_message
 
 
 class TestedMachineCommunicator:
@@ -123,10 +124,20 @@ class TestedMachineCommunicator:
                 request = unwrap_incoming(request_bytes, self._enable_encryption, self._shared_secret)
             except Exception:
                 request = json.loads(request_bytes.decode('utf-8'))
+            # 基础校验与版本比对
+            validate = basic_validate_message(request)
+            if not validate.get("success"):
+                print(f"收到无效连接请求: {validate.get('error')}")
+                return False
+            req_ver = request.get("protocol_version")
+            if not req_ver:
+                print("警告: 对端未携带 protocol_version，将按当前版本兼容处理")
+            elif req_ver != PROTOCOL_VERSION:
+                print(f"警告: 协议版本不匹配，对端={req_ver}, 本端={PROTOCOL_VERSION}，尝试兼容处理")
             self._emit_event("incoming_connection", {"from": str(test_server_addr), "raw": request})
             if not request:
                 return False
-            if request.get("type") != "connection_request":
+            if request.get("type") != MessageTypes.CONNECTION_REQUEST:
                 print(f"收到来自 {test_server_addr} 的无效连接请求类型: {request.get('type')}")
                 return False
             
@@ -163,8 +174,9 @@ class TestedMachineCommunicator:
             
             # 发送连接确认
             response = {
-                "type": "connection_response",
+                "type": MessageTypes.CONNECTION_RESPONSE,
                 "success": True,
+                "protocol_version": PROTOCOL_VERSION,
                 "data": {
                     "message": "连接已接受"
                 }
@@ -173,7 +185,7 @@ class TestedMachineCommunicator:
             
             # 发送机器注册请求
             registration_request = {
-                "type": "machine_registration",
+                "type": MessageTypes.MACHINE_REGISTRATION,
                 "data": {
                     "machine_id": self.machine_id,
                     "machine_info": {
@@ -184,7 +196,8 @@ class TestedMachineCommunicator:
                         "timestamp": time.time(),
                         "server_id": server_id
                     }
-                }
+                },
+                "protocol_version": PROTOCOL_VERSION
             }
             test_server_socket.sendall(wrap_outgoing(registration_request, self._enable_encryption, self._shared_secret))
             print(f"发送机器注册请求: machine_id={self.machine_id}")
@@ -349,12 +362,13 @@ class TestedMachineCommunicator:
             
         try:
             event_data = {
-                "type": "sync_event",
+                "type": MessageTypes.EVENT_SYNC,
                 "data": {
                     "type": event_type,
                     "app_name": app_name,
                     "data": data
-                }
+                },
+                "protocol_version": PROTOCOL_VERSION
             }
             self.test_server_socket.sendall(wrap_outgoing(event_data, self._enable_encryption, self._shared_secret))
         except Exception as e:
@@ -370,12 +384,13 @@ class TestedMachineCommunicator:
             for app_name, app_info in self.machine_operator.apps.items():
                 # 向测试服务器发送应用注册请求
                 app_registration_request = {
-                    "type": "register_app",
+                    "type": MessageTypes.REGISTER_APP,
                     "data": {
                         "app_name": app_name,
                         "app_info": app_info.get("info", {}),
                         "machine_id": self.machine_id
-                    }
+                    },
+                    "protocol_version": PROTOCOL_VERSION
                 }
                 self.test_server_socket.sendall(wrap_outgoing(app_registration_request, self._enable_encryption, self._shared_secret))
                 print(f"同步应用 {app_name} 到测试服务器")
@@ -496,14 +511,34 @@ class TestedMachineCommunicator:
                     request = unwrap_incoming(request_bytes, self._enable_encryption, self._shared_secret)
                 except Exception:
                     request = json.loads(request_bytes.decode('utf-8'))
+                # 基础校验与版本比对
+                validate = basic_validate_message(request)
+                if not validate.get("success"):
+                    error_msg = {"success": False, "error": f"非法消息: {validate.get('error')}", "protocol_version": PROTOCOL_VERSION}
+                    try:
+                        self.test_server_socket.sendall(wrap_outgoing(error_msg, self._enable_encryption, self._shared_secret))
+                    except Exception:
+                        pass
+                    continue
+                req_ver = request.get("protocol_version")
+                if not req_ver:
+                    print("警告: 收到未携带协议版本的消息，将按当前版本兼容处理")
+                elif req_ver != PROTOCOL_VERSION:
+                    print(f"警告: 收到协议版本不匹配的消息，对端={req_ver}, 本端={PROTOCOL_VERSION}，尝试兼容处理")
                 self._emit_event("client_request", {"from": str(self.test_server_addr), "type": request.get("type")})
 
                 def addResponseType(response):
                     if 'type' in response and response['type']:
+                        # 如果响应已有type，添加请求ID
+                        if 'request_id' in request:
+                            response['request_id'] = request['request_id']
+                        # 统一加上协议版本
+                        response['protocol_version'] = PROTOCOL_VERSION
                         return response
-                    return {
+                    response_data = {
                         "type": f"{request['type']}_response",
-                        "data": response
+                        "data": response,
+                        "protocol_version": PROTOCOL_VERSION
                     }
                     # 添加请求ID
                     if 'request_id' in request:
@@ -574,7 +609,9 @@ class TestedMachineCommunicator:
                 # 发送响应
                 if not request["type"].endswith("_response"):
                     response = addResponseType(response)
+                    print(f"发送响应: {response}")
                     self.test_server_socket.sendall(wrap_outgoing(response, self._enable_encryption, self._shared_secret))
+                    print(f"响应已发送到 {self.test_server_addr}")
                     self._emit_event("client_response", {"from": str(self.test_server_addr), "ok": bool(response.get("success"))})
 
         except json.JSONDecodeError:
