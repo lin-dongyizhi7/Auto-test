@@ -307,6 +307,7 @@ class MultiMachineOperation:
             {"x": loc["center_x"], "y": loc["center_y"], "button": "right"}
         ))
         
+        print(commands)
         return commands
     
     def double_click_element(self, element_path: str, role_name_list: Optional[List[str]] = None) -> List[Dict]:
@@ -332,6 +333,7 @@ class MultiMachineOperation:
             {"x": loc["center_x"], "y": loc["center_y"], "button": "left", "clicks": 2}
         ))
         
+        print(commands)
         return commands
     
     def move_to(self, x: int, y: int) -> Dict:
@@ -401,6 +403,7 @@ class MultiMachineOperation:
             {"x": end_loc["center_x"], "y": end_loc["center_y"], "button": "left"}
         ))
         
+        print(commands)
         self.finish_current_opts(commands)
         return commands
     
@@ -450,6 +453,7 @@ class MultiMachineOperation:
                 {"key": char}
             ))
         
+        print(commands)
         self.finish_current_opts(commands)
         return commands
     
@@ -486,6 +490,7 @@ class MultiMachineOperation:
                 {"key": char}
             ))
         
+        print(commands)
         return commands
     
     def hotkey(self, keys: List[str]) -> Dict:
@@ -498,6 +503,7 @@ class MultiMachineOperation:
             return {"success": False, "error": "未设置目标机器和应用"}
         
         commands = [self._generate_command("hotkey", {"keys": keys})]
+        print(commands)
         self.finish_current_opts(commands)
         return {"success": True, "commands": commands}
     
@@ -511,6 +517,7 @@ class MultiMachineOperation:
             return {"success": False, "error": "未设置目标机器和应用"}
         
         commands = [self._generate_command("key_press", {"key": key})]
+        print(commands)
         self.finish_current_opts(commands)
         return {"success": True, "commands": commands}
     
@@ -524,6 +531,7 @@ class MultiMachineOperation:
             return {"success": False, "error": "未设置目标机器和应用"}
         
         commands = [self._generate_command("key_release", {"key": key})]
+        print(commands)
         self.finish_current_opts(commands)
         return {"success": True, "commands": commands}
     
@@ -572,61 +580,36 @@ class MultiMachineOperation:
         
         return {"success": False, "error": f"等待图片 {image_path} 超时"}
     
-    def validate_result(self, rule: Dict) -> Dict:
+    def validate_result(self, element_path: str, expect_value: Any, role_name_list: Optional[List[str]] = None, attr: str = "text", assert_type: str = "equal") -> List[Dict]:
         """
-        单次断言校验：发送断言请求到被测机器，由被测机器处理元素查找和断言比较。
-
-        典型用法：对计算显示区域的文本进行比对
-        - rule = {"type": "equal", "element_path": "主窗体/结果显示区域", "attr": "text", "expected": "8", "role_name_list": ["text"]}
-
-        支持的 type：
-        - equal, notequal, regex, contains, gt, gte, lt, lte, isnone, isnotnone, approx
-
-        :param rule: 单条断言规则
-        :return: { success: bool, error?: str, actual?: any, expected?: any }
+        生成断言验证指令
+        
+        :param element_path: 元素路径
+        :param expect_value: 期望值
+        :param role_name_list: 元素角色名列表（可选）
+        :param attr: 属性名（默认 "text"）
+        :param assert_type: 断言类型（默认 "equal"）
+        :return: 命令列表
         """
         if not self._check_target_set():
-            return {"success": False, "error": "未设置目标机器和应用"}
-
-        if not isinstance(rule, dict):
-            return {"success": False, "error": "规则必须为对象"}
-
-        element_path = rule.get("element_path")
-        role_name_list = rule.get("role_name_list")
-        # 兼容两种入参：新接口 expected，和 op_record 产出的 expect_value（attr 默认 text）
-        attr_path = rule.get("attr") or "text"
-        expected = rule.get("expected", rule.get("expect_value"))
-        assert_type = rule.get("type", "equal")
-
-        if not element_path:
-            return {"success": False, "error": "规则缺少 element_path"}
-
-        if expected is None:
-            return {"success": False, "error": "期望值不能为空"}
-
-        # 发送断言请求到被测机器
-        try:
-            assert_resp = self.communicator._forward_request_to_machine(
-                self.current_machine_id,
-                "assert",
-                {
-                    "element_path": element_path,
-                    "role_name_list": role_name_list,
-                    "expect_value": expected,
-                    "attr": attr_path,
-                    "type": assert_type
-                }
-            )
-            
-            return {
-                "success": assert_resp.get("success", False),
-                "actual": assert_resp.get("actual"),
-                "expected": assert_resp.get("expected"),
-                "error": assert_resp.get("error")
+            return []
+        
+        commands = []
+        
+        # 生成断言命令
+        commands.append(self._generate_command(
+            "assert",
+            {
+                "element_path": element_path,
+                "role_name_list": role_name_list or [],
+                "expect_value": expect_value,
+                "attr": attr,
+                "type": assert_type
             }
-            
-        except Exception as e:
-            return {"success": False, "error": f"断言请求异常: {str(e)}"}
+        ))
+        
+        print(commands)
+        return commands
 
     # ==================== 指令执行管理 ====================
     
@@ -859,7 +842,15 @@ class MultiMachineOperation:
             threshold = float(step.get("threshold", 0.8))
             return self.click_image(image_path, threshold)
         if step_type == "assert":
-            return self.validate_result(step)
+            # 生成断言命令并执行
+            commands = self.validate_result(
+                step.get("element_path", ""),
+                step.get("expect_value"),
+                step.get("role_name_list"),
+                step.get("attr", "text"),
+                step.get("type", "equal")
+            )
+            return self._execute_commands_on_target(commands)
         # 未知类型：忽略或失败，这里选择失败以便提示
         return {"success": False, "error": f"不支持的步骤类型: {step_type}"}
 

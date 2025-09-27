@@ -2,7 +2,7 @@
 Author: 凛冬已至 2985956026@qq.com
 Date: 2025-07-24 13:25:17
 LastEditors: 凛冬已至 2985956026@qq.com
-LastEditTime: 2025-09-27 16:07:37
+LastEditTime: 2025-09-27 18:53:06
 FilePath: \Auto-test\communicators\tested_communicator.py
 Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
 '''
@@ -19,7 +19,7 @@ import queue
 import os
 import sys
 import argparse
-from typing import Dict, List, Optional, Set, Any
+from typing import Dict, List, Optional, Set
 from .config import get_security_config
 from .crypto_utils import wrap_outgoing, unwrap_incoming
 from collections import OrderedDict
@@ -614,4 +614,531 @@ class TestedMachineCommunicator:
                     except Exception:
                         pass
                     continue
-                req_ver = re
+                req_ver = request.get("protocol_version")
+                if not req_ver:
+                    print("警告: 收到未携带协议版本的消息，将按当前版本兼容处理")
+                elif req_ver != PROTOCOL_VERSION:
+                    print(f"警告: 收到协议版本不匹配的消息，对端={req_ver}, 本端={PROTOCOL_VERSION}，尝试兼容处理")
+                self._emit_event("client_request", {"from": str(self.test_server_addr), "type": request.get("type")})
+
+                def addResponseType(response):
+                    if 'type' in response and response['type']:
+                        # 如果响应已有type，添加请求ID
+                        if 'request_id' in request:
+                            response['request_id'] = request['request_id']
+                        # 统一加上协议版本
+                        response['protocol_version'] = PROTOCOL_VERSION
+                        return response
+                    response_data = {
+                        "type": f"{request['type']}_response",
+                        "data": response,
+                        "protocol_version": PROTOCOL_VERSION
+                    }
+                    # 添加请求ID
+                    if 'request_id' in request:
+                        response_data['request_id'] = request['request_id']
+                    return response_data
+                
+                # 处理不同类型的请求
+                if request["type"] == "get_app_region":
+                    app_name = request["data"].get("app_name")
+                    if app_name and app_name in self.machine_operator.apps:
+                        app_region = self._get_app_region(app_name)
+                        if app_region:
+                            response = {
+                                "success": True,
+                                "data": {"app_region": app_region}
+                            }
+                        else:
+                            response = {"success": False, "error": "无法获取应用窗口信息"}
+                    else:
+                        response = {"success": False, "error": "应用名称无效或未注册"}
+
+                elif request["type"] == "get_screenshot":
+                    app_name = request["data"].get("app_name")
+                    region = request["data"].get("region")
+                    response = self._handle_screenshot_request(app_name, region)
+
+                elif request["type"] == "get_element":
+                    # 处理元素查询请求
+                    app_name = request["data"].get("app_name")
+                    element_path = request["data"].get("element_path")
+                    role_name_list = request["data"].get("role_name_list")
+                    response = self._handle_element_request(app_name, element_path, role_name_list)
+
+                elif request["type"] == "exec_commands":
+                    # 处理指令集执行请求
+                    app_name = request["data"].get("app_name")
+                    commands = request["data"].get("commands")
+                    response = self._handle_command_request(app_name, commands)
+
+                elif request["type"] == "register_app":
+                    # 处理应用注册请求
+                    app_name = request["data"].get("app_name")
+                    app_info = request["data"].get("app_info", {})
+                    success = self.register_app(app_name, app_info)
+                    response = {"success": success, "message": "应用注册成功" if success else "应用注册失败"}
+
+                elif request["type"] == "unregister_app":
+                    # 处理应用注销请求
+                    app_name = request["data"].get("app_name")
+                    success = self.unregister_app(app_name)
+                    response = {"success": success, "message": "应用注销成功" if success else "应用注销失败"}
+
+                elif request["type"] == "disconnect":
+                    # 处理主动断开连接请求
+                    print(f"收到 {self.test_server_addr} 的断开连接请求")
+                    response = {"success": True, "message": "连接已断开"}
+                    self.test_server_socket.sendall(wrap_outgoing(response, self._enable_encryption, self._shared_secret))
+                    self.test_server_connected = False
+                    self.test_server_socket = None
+                    print(f"与测试服务器 {self.test_server_addr} 的连接已断开")
+                    self._emit_event("test_server_disconnected", {"test_server_addr": str(self.test_server_addr)})
+                    return
+
+                elif request["type"] == "assert":
+                    # 处理断言请求
+                    element_path = request["data"].get("element_path")
+                    role_name_list = request["data"].get("role_name_list", [])
+                    expect_value = request["data"].get("expect_value")
+                    attr = request["data"].get("attr", "text")
+                    assert_type = request["data"].get("type", "equal")
+                    response = self._handle_assert_request(element_path, role_name_list, expect_value, attr, assert_type)
+                
+                elif request["type"].endswith("_response"):
+                    response = request["data"]
+                    print(f"{request['type']} 收到 {self.test_server_addr} 的响应: {response}")
+
+                # 发送响应
+                if not request["type"].endswith("_response"):
+                    response = addResponseType(response)
+                    print(f"发送响应: {response}")
+                    self.test_server_socket.sendall(wrap_outgoing(response, self._enable_encryption, self._shared_secret))
+                    print(f"响应已发送到 {self.test_server_addr}")
+                    self._emit_event("client_response", {"from": str(self.test_server_addr), "ok": bool(response.get("success"))})
+
+        except json.JSONDecodeError:
+            error_msg = {"success": False, "error": "无效的JSON格式"}
+            self.test_server_socket.sendall(wrap_outgoing(error_msg, self._enable_encryption, self._shared_secret))
+            self._emit_event("client_response", {"from": str(self.test_server_addr), "ok": False, "error": "JSONDecodeError"})
+        except Exception as e:
+            print(f"与测试服务器 {self.test_server_addr} 通信时发生错误: {str(e)}")
+            self._emit_event("server_error", {"test_server_addr": str(self.test_server_addr), "error": str(e)})
+            try:
+                self.test_server_socket.sendall(wrap_outgoing(response, self._enable_encryption, self._shared_secret))
+            except Exception:
+                pass
+            self.test_server_connected = False
+            self.test_server_socket = None
+            print(f"与测试服务器 {self.test_server_addr} 的连接已断开")
+        finally:
+            print("Request Handle Done")
+
+    def get_test_server_status(self) -> Dict:
+        """获取测试服务器连接状态"""
+        if not self.test_server_connected:
+            return {
+                "connected": False,
+                "message": "未连接"
+            }
+        
+        return {
+            "connected": True,
+            "message": "已连接",
+            "server_info": self.test_server_connection_info,
+            "machine_id": self.machine_id
+        }
+
+    def stop(self) -> None:
+        """停止通信服务"""
+        self.is_running = False
+        
+        # 停止日志收集器
+        if self.log_collector:
+            cleanup_global_logging()
+            self.log_collector = None
+            print("日志收集器已停止")
+        
+        # 关闭测试服务器连接
+        if self.test_server_socket:
+            try:
+                self.test_server_socket.close()
+            except:
+                pass
+            self.test_server_connected = False
+        
+        # 关闭本地服务器
+        if self.server_socket:
+            self.server_socket.close()
+        
+        # 等待所有客户端线程结束
+        # 注意：这里移除了client_threads的引用，因为重构后不再需要
+        
+        print("通信服务已停止")
+
+
+def interactive_setup():
+    """交互式配置设置"""
+    print("=" * 60)
+    print("被测试机器通信服务 - 交互式配置")
+    print("=" * 60)
+    
+    # 获取监听端口
+    while True:
+        try:
+            port_input = input("请输入监听端口 (默认: 8888): ").strip()
+            if not port_input:
+                port = 8888
+                break
+            else:
+                port = int(port_input)
+                if 1 <= port <= 65535:
+                    break
+                else:
+                    print("❌ 端口号必须在 1-65535 范围内")
+        except ValueError:
+            print("❌ 请输入有效的端口号")
+    
+    # 获取机器ID
+    machine_id = input("请输入机器ID (默认: test_machine_001): ").strip()
+    if not machine_id:
+        machine_id = "test_machine_001"
+    
+    # 选择是否启用预加载（先于配置文件选择）
+    preload_input = input("是否启用常用组件预加载功能? (y/n，默认: y): ").strip().lower()
+    enable_preload = preload_input in ['', 'y', 'yes', '是']
+
+    # 扫描 preload 目录供选择配置文件
+    config_file = ""
+    if enable_preload:
+        print("\n扫描 preload 目录下可用的配置文件:")
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        preload_dir = os.path.join(script_dir, "preload")
+        available_files = []
+        try:
+            if os.path.isdir(preload_dir):
+                for fname in os.listdir(preload_dir):
+                    if fname.lower().endswith('.json'):
+                        available_files.append(fname)
+        except Exception:
+            available_files = []
+
+        if not available_files:
+            print("未在 preload 目录发现可用 JSON 配置文件，将禁用预加载功能")
+            enable_preload = False
+        else:
+            for idx, fname in enumerate(available_files, 1):
+                print(f"{idx}. {fname}")
+            choice = input(f"请选择配置文件 (1-{len(available_files)}，默认: 1): ").strip()
+            try:
+                idx = int(choice) if choice else 1
+            except ValueError:
+                idx = 1
+            idx = max(1, min(idx, len(available_files)))
+            # 返回相对路径，以便后续与 script_dir 拼接
+            config_file = os.path.join("preload", available_files[idx - 1])
+
+    # 获取监控应用列表（默认空=监听所有应用）
+    print("\n未指定将监听所有应用，可输入应用名称（空格分隔）以限定:")
+    apps_input = input("请输入要监控的应用名称 (默认: 空=监听所有): ").strip()
+    if not apps_input:
+        apps = []
+    else:
+        apps = [app.strip() for app in apps_input.split()]
+    
+    return {
+        'port': port,
+        'machine_id': machine_id,
+        'apps': apps,
+        'config_file': config_file,
+        'enable_preload': enable_preload
+    }
+
+def display_config(config):
+    """显示配置信息"""
+    print("\n" + "=" * 60)
+    print("配置确认")
+    print("=" * 60)
+    print(f"监听端口: {config['port']}")
+    print(f"机器ID: {config['machine_id']}")
+    print(f"监控应用: {', '.join(config['apps']) if config['apps'] else '未指定（监听所有应用）'}")
+    print(f"组件配置文件: {config['config_file'] if config['config_file'] else '（未启用预加载）'}")
+    print(f"预加载功能: {'启用' if config['enable_preload'] else '禁用'}")
+    print("=" * 60)
+    
+    confirm = input("\n确认启动服务? (y/n，默认: y): ").strip().lower()
+    return confirm in ['', 'y', 'yes', '是']
+
+def interactive_menu(communicator):
+    """交互式菜单"""
+    while True:
+        print("\n" + "=" * 40)
+        print("服务管理菜单")
+        print("=" * 40)
+        print("1. 查看服务状态")
+        print("2. 查看已注册应用")
+        print("3. 手动注册应用")
+        print("4. 注销应用")
+        print("5. 预加载组件")
+        print("6. 查看缓存状态")
+        print("7. 重新加载配置文件")
+        print("8. 停止服务")
+        print("0. 退出菜单")
+        
+        choice = input("\n请选择操作 (0-8): ").strip()
+        
+        if choice == "1":
+            show_service_status(communicator)
+        elif choice == "2":
+            show_registered_apps(communicator)
+        elif choice == "3":
+            register_app_interactive(communicator)
+        elif choice == "4":
+            unregister_app_interactive(communicator)
+        elif choice == "5":
+            preload_components_interactive(communicator)
+        elif choice == "6":
+            show_cache_status(communicator)
+        elif choice == "7":
+            reload_config_interactive(communicator)
+        elif choice == "8":
+            print("正在停止服务...")
+            communicator.stop()
+            print("服务已停止")
+            break
+        elif choice == "0":
+            print("退出菜单，服务继续运行...")
+            break
+        else:
+            print("❌ 无效选择，请重新输入")
+
+def show_service_status(communicator):
+    """显示服务状态"""
+    print("\n" + "-" * 30)
+    print("服务状态")
+    print("-" * 30)
+    print(f"运行状态: {'运行中' if communicator.is_running else '已停止'}")
+    print(f"监听地址: {communicator.bind_host}:{communicator.bind_port}")
+    print(f"机器ID: {communicator.machine_id}")
+    print(f"预加载功能: {'启用' if communicator.machine_operator.preload_enabled else '禁用'}")
+    
+    # 测试服务器连接状态
+    server_status = communicator.get_test_server_status()
+    print(f"测试服务器连接: {'已连接' if server_status['connected'] else '未连接'}")
+
+def show_registered_apps(communicator):
+    """显示已注册应用"""
+    print("\n" + "-" * 30)
+    print("已注册应用")
+    print("-" * 30)
+    if not communicator.machine_operator.apps:
+        print("暂无已注册应用")
+    else:
+        for app_name, app_info in communicator.machine_operator.apps.items():
+            print(f"应用: {app_name}")
+            print(f"  状态: {app_info.get('status', '未知')}")
+            print(f"  注册时间: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(app_info.get('registered_at', 0)))}")
+            print()
+
+def register_app_interactive(communicator):
+    """交互式注册应用"""
+    app_name = input("请输入要注册的应用名称: ").strip()
+    if not app_name:
+        print("❌ 应用名称不能为空")
+        return
+    
+    if app_name in communicator.machine_operator.apps:
+        print(f"❌ 应用 {app_name} 已经注册")
+        return
+    
+    success = communicator.register_app(app_name)
+    if success:
+        print(f"✅ 应用 {app_name} 注册成功")
+    else:
+        print(f"❌ 应用 {app_name} 注册失败")
+
+def unregister_app_interactive(communicator):
+    """交互式注销应用"""
+    if not communicator.machine_operator.apps:
+        print("❌ 没有已注册的应用")
+        return
+    
+    print("已注册的应用:")
+    for i, app_name in enumerate(communicator.machine_operator.apps.keys(), 1):
+        print(f"{i}. {app_name}")
+    
+    try:
+        choice = int(input("请选择要注销的应用编号: ")) - 1
+        app_names = list(communicator.machine_operator.apps.keys())
+        if 0 <= choice < len(app_names):
+            app_name = app_names[choice]
+            success = communicator.unregister_app(app_name)
+            if success:
+                print(f"✅ 应用 {app_name} 注销成功")
+            else:
+                print(f"❌ 应用 {app_name} 注销失败")
+        else:
+            print("❌ 无效选择")
+    except ValueError:
+        print("❌ 请输入有效的数字")
+
+def preload_components_interactive(communicator):
+    """交互式预加载组件"""
+    if not communicator.machine_operator.preload_enabled:
+        print("❌ 预加载功能未启用")
+        return
+    
+    if not communicator.machine_operator.apps:
+        print("❌ 没有已注册的应用")
+        return
+    
+    print("选择预加载范围:")
+    print("1. 预加载所有应用")
+    print("2. 预加载指定应用")
+    
+    choice = input("请选择 (1/2): ").strip()
+    
+    if choice == "1":
+        print("开始预加载所有应用的组件...")
+        result = communicator.preload_all_components()
+    elif choice == "2":
+        print("已注册的应用:")
+        for i, app_name in enumerate(communicator.machine_operator.apps.keys(), 1):
+            print(f"{i}. {app_name}")
+        
+        try:
+            app_choice = int(input("请选择应用编号: ")) - 1
+            app_names = list(communicator.machine_operator.apps.keys())
+            if 0 <= app_choice < len(app_names):
+                app_name = app_names[app_choice]
+                print(f"开始预加载应用 {app_name} 的组件...")
+                result = communicator.preload_components_for_app(app_name)
+            else:
+                print("❌ 无效选择")
+                return
+        except ValueError:
+            print("❌ 请输入有效的数字")
+            return
+    else:
+        print("❌ 无效选择")
+        return
+    
+    # 显示结果
+    if result.get('success'):
+        stats = result.get('stats', result.get('total_stats', {}))
+        print(f"✅ 预加载完成: 总计 {stats.get('total', 0)} 个组件")
+        print(f"   成功: {stats.get('success', 0)} 个")
+        print(f"   失败: {stats.get('failed', 0)} 个")
+    else:
+        print(f"❌ 预加载失败: {result.get('error', '未知错误')}")
+
+def show_cache_status(communicator):
+    """显示缓存状态"""
+    print("\n" + "-" * 30)
+    print("缓存状态")
+    print("-" * 30)
+    if not communicator.machine_operator.element_caches:
+        print("暂无缓存数据")
+    else:
+        for app_name, cache in communicator.machine_operator.element_caches.items():
+            print(f"应用: {app_name}")
+            print(f"  缓存大小: {len(cache.cache)}/{cache.capacity}")
+            print(f"  缓存命中率: {getattr(cache, 'hit_rate', 'N/A')}")
+
+def reload_config_interactive(communicator):
+    """交互式重新加载配置"""
+    print("可用的配置文件:")
+    print("1. common_components.json (中文版)")
+    print("2. common_components_en.json (英文版)")
+    
+    choice = input("请选择配置文件 (1/2): ").strip()
+    if choice == "2":
+        config_file = "common_components_en.json"
+    else:
+        config_file = "common_components.json"
+    
+    # 构建完整路径
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    config_path = os.path.join(script_dir, config_file)
+    
+    print(f"正在重新加载配置文件: {config_path}")
+    success = communicator.load_common_components(config_path)
+    
+    if success:
+        print("✅ 配置文件重新加载成功")
+    else:
+        print("❌ 配置文件重新加载失败")
+
+def main():
+    """主函数，交互式启动服务"""
+    # 交互式配置
+    config = interactive_setup()
+    
+    # 确认配置
+    if not display_config(config):
+        print("配置已取消，退出程序")
+        return
+    
+    # 初始化服务
+    communicator = TestedMachineCommunicator(
+        bind_port=config['port'],
+        machine_id=config['machine_id']
+    )
+    
+    try:
+        # 加载配置文件
+        if config['enable_preload'] and config['config_file']:
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            config_path = os.path.join(script_dir, config['config_file'])
+            print(f"\n正在加载常用组件配置文件: {config_path}")
+            if communicator.load_common_components(config_path):
+                print("✅ 常用组件配置文件加载成功")
+            else:
+                print("❌ 常用组件配置文件加载失败，将禁用预加载功能")
+                config['enable_preload'] = False
+        
+        # 启动服务
+        print(f"\n正在启动服务，监控应用: {', '.join(config['apps']) if config['apps'] else '未指定（监听所有应用）'}")
+        communicator.start(app_names=config['apps'])
+        
+        # 预加载组件
+        if config['enable_preload']:
+            print("\n开始预加载常用组件...")
+            preload_result = communicator.preload_all_components()
+            
+            if preload_result.get('success'):
+                stats = preload_result.get('total_stats', {})
+                print(f"✅ 预加载完成: 总计 {stats.get('total', 0)} 个组件")
+                print(f"   成功: {stats.get('success', 0)} 个")
+                print(f"   失败: {stats.get('failed', 0)} 个")
+            else:
+                print(f"❌ 预加载失败: {preload_result.get('error', '未知错误')}")
+        
+        print("\n" + "=" * 60)
+        print("服务已启动，等待连接...")
+        print("输入 'menu' 进入管理菜单，按 Ctrl+C 停止服务")
+        print("=" * 60)
+        
+        # 交互式运行
+        import threading
+        
+        # 启动菜单线程
+        menu_thread = threading.Thread(target=interactive_menu, args=(communicator,), daemon=True)
+        menu_thread.start()
+        
+        # 保持服务运行
+        while communicator.is_running:
+            try:
+                time.sleep(1)
+            except KeyboardInterrupt:
+                break
+            
+    except KeyboardInterrupt:
+        pass
+    finally:
+        print("\n收到停止信号，正在关闭服务...")
+        communicator.stop()
+        print("服务已停止")
+
+if __name__ == "__main__":
+    main()
