@@ -428,6 +428,31 @@ class OpRecord:
         }
         
         return json_script
+
+    # ==================== 验证操作 ====================
+
+    @classmethod
+    def validate_result(cls, element_path: str, expect_value: Any, role_name_list: Optional[List[str]] = None, description: str = "") -> None:
+        """
+        添加断言步骤，转换为 JSON:
+        { id, type: "assert", element_path, role_name_list, expect_value }
+
+        :param element_path: 要检验的元素路径
+        :param expect_value: 期望值
+        :param role_name_list: 角色名列表（可选）
+        :param description: 描述（可选）
+        """
+        if not description:
+            description = f"校验元素 {element_path} 值为: {expect_value}"
+
+        params = {
+            "element_path": element_path,
+            "expect_value": expect_value
+        }
+        if role_name_list:
+            params["role_name_list"] = role_name_list
+
+        cls._add_step("assert", params, description)
     
     @classmethod
     def getStepsCount(cls) -> int:

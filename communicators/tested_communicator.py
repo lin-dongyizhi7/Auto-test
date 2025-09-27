@@ -303,6 +303,100 @@ class TestedMachineCommunicator:
         
         return result
 
+    def _handle_assert_request(self, element_path: str, role_name_list: List[str], expect_value: Any, attr: str, assert_type: str) -> Dict:
+        """处理断言请求"""
+        if not element_path:
+            return {"success": False, "error": "元素路径不能为空"}
+        
+        if not self.current_app_name:
+            return {"success": False, "error": "未设置当前应用"}
+        
+        if self.current_app_name not in self.machine_operator.apps:
+            return {"success": False, "error": f"应用 {self.current_app_name} 未注册"}
+        
+        try:
+            # 获取元素信息
+            element_result = self._get_element(self.current_app_name, element_path, role_name_list)
+            if not element_result.get("success"):
+                return {"success": False, "error": f"获取元素失败: {element_result.get('error')}"}
+            
+            element_data = element_result.get("data", {})
+            
+            # 提取属性值
+            actual_value = self._extract_attribute_value(element_data, attr)
+            
+            # 执行断言比较
+            assert_result = self._perform_assertion(actual_value, expect_value, assert_type)
+            
+            return {
+                "success": assert_result["success"],
+                "actual": actual_value,
+                "expected": expect_value,
+                "assert_type": assert_type,
+                "element_path": element_path,
+                "attr": attr,
+                "error": assert_result.get("error")
+            }
+            
+        except Exception as e:
+            return {"success": False, "error": f"断言处理异常: {str(e)}"}
+
+    def _extract_attribute_value(self, element_data: Dict, attr_path: str) -> Any:
+        """从元素数据中提取属性值"""
+        if not attr_path:
+            return None
+        
+        current = element_data
+        for part in attr_path.split('.'):
+            if isinstance(current, dict) and part in current:
+                current = current[part]
+            else:
+                return None
+        return current
+
+    def _perform_assertion(self, actual: Any, expected: Any, assert_type: str) -> Dict:
+        """执行断言比较"""
+        try:
+            assert_type = assert_type.lower()
+            
+            if assert_type == "equal":
+                success = (actual == expected)
+            elif assert_type == "notequal":
+                success = (actual != expected)
+            elif assert_type == "regex":
+                import re
+                success = isinstance(expected, str) and re.search(expected, str(actual)) is not None
+            elif assert_type == "contains":
+                success = expected in actual if isinstance(actual, (str, list, dict)) else False
+            elif assert_type == "gt":
+                success = actual > expected
+            elif assert_type == "gte":
+                success = actual >= expected
+            elif assert_type == "lt":
+                success = actual < expected
+            elif assert_type == "lte":
+                success = actual <= expected
+            elif assert_type == "isnone":
+                success = (actual is None)
+            elif assert_type == "isnotnone":
+                success = (actual is not None)
+            elif assert_type == "approx":
+                tolerance = 1e-6
+                success = abs(float(actual) - float(expected)) <= tolerance
+            else:
+                return {"success": False, "error": f"不支持的断言类型: {assert_type}"}
+            
+            if not success:
+                return {
+                    "success": False, 
+                    "error": f"断言失败: {assert_type}, 实际值: {actual}, 期望值: {expected}"
+                }
+            
+            return {"success": True}
+            
+        except Exception as e:
+            return {"success": False, "error": f"断言执行异常: {str(e)}"}
+
     def register_app(self, app_name: str, app_info: Dict = None) -> bool:
         """注册应用"""
         success = self.machine_operator.register_app(app_name, app_info)
@@ -601,6 +695,15 @@ class TestedMachineCommunicator:
                     print(f"与测试服务器 {self.test_server_addr} 的连接已断开")
                     self._emit_event("test_server_disconnected", {"test_server_addr": str(self.test_server_addr)})
                     return
+
+                elif request["type"] == "assert":
+                    # 处理断言请求
+                    element_path = request["data"].get("element_path")
+                    role_name_list = request["data"].get("role_name_list", [])
+                    expect_value = request["data"].get("expect_value")
+                    attr = request["data"].get("attr", "text")
+                    assert_type = request["data"].get("type", "equal")
+                    response = self._handle_assert_request(element_path, role_name_list, expect_value, attr, assert_type)
                 
                 elif request["type"].endswith("_response"):
                     response = request["data"]

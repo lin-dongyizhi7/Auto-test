@@ -572,14 +572,61 @@ class MultiMachineOperation:
         
         return {"success": False, "error": f"等待图片 {image_path} 超时"}
     
-    def validate_result(self, result: Dict) -> Dict:
+    def validate_result(self, rule: Dict) -> Dict:
         """
-        验证结果
-        
-        :param result: 结果
-        :return: 结果
+        单次断言校验：发送断言请求到被测机器，由被测机器处理元素查找和断言比较。
+
+        典型用法：对计算显示区域的文本进行比对
+        - rule = {"type": "equal", "element_path": "主窗体/结果显示区域", "attr": "text", "expected": "8", "role_name_list": ["text"]}
+
+        支持的 type：
+        - equal, notequal, regex, contains, gt, gte, lt, lte, isnone, isnotnone, approx
+
+        :param rule: 单条断言规则
+        :return: { success: bool, error?: str, actual?: any, expected?: any }
         """
-        return True
+        if not self._check_target_set():
+            return {"success": False, "error": "未设置目标机器和应用"}
+
+        if not isinstance(rule, dict):
+            return {"success": False, "error": "规则必须为对象"}
+
+        element_path = rule.get("element_path")
+        role_name_list = rule.get("role_name_list")
+        # 兼容两种入参：新接口 expected，和 op_record 产出的 expect_value（attr 默认 text）
+        attr_path = rule.get("attr") or "text"
+        expected = rule.get("expected", rule.get("expect_value"))
+        assert_type = rule.get("type", "equal")
+
+        if not element_path:
+            return {"success": False, "error": "规则缺少 element_path"}
+
+        if expected is None:
+            return {"success": False, "error": "期望值不能为空"}
+
+        # 发送断言请求到被测机器
+        try:
+            assert_resp = self.communicator._forward_request_to_machine(
+                self.current_machine_id,
+                "assert",
+                {
+                    "element_path": element_path,
+                    "role_name_list": role_name_list,
+                    "expect_value": expected,
+                    "attr": attr_path,
+                    "type": assert_type
+                }
+            )
+            
+            return {
+                "success": assert_resp.get("success", False),
+                "actual": assert_resp.get("actual"),
+                "expected": assert_resp.get("expected"),
+                "error": assert_resp.get("error")
+            }
+            
+        except Exception as e:
+            return {"success": False, "error": f"断言请求异常: {str(e)}"}
 
     # ==================== 指令执行管理 ====================
     
@@ -712,7 +759,6 @@ class MultiMachineOperation:
             result = self._execute_step(step)
             if not result.get("success"):
                 return {"success": False, "error": result.get("error", "未知错误"), "failed_step": step.get("id")}
-
         return {"success": True}
 
     def _execute_step(self, step: Dict[str, Any]) -> Dict[str, Any]:
@@ -812,7 +858,8 @@ class MultiMachineOperation:
             image_path = step.get("image_path") or step.get("imagePath")
             threshold = float(step.get("threshold", 0.8))
             return self.click_image(image_path, threshold)
-
+        if step_type == "assert":
+            return self.validate_result(step)
         # 未知类型：忽略或失败，这里选择失败以便提示
         return {"success": False, "error": f"不支持的步骤类型: {step_type}"}
 
