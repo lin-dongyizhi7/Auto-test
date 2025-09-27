@@ -4,6 +4,12 @@
 
 这个脚本展示了如何编写Python自动化测试脚本，
 使用OpRecord类来记录操作步骤，最终转换为JSON格式执行。
+
+新增功能：
+- validate_result(): 添加断言验证步骤
+- 支持元素属性值验证（如文本内容、数值比较等）
+- 断言步骤会转换为JSON中的"assert"类型步骤
+- 在脚本执行时，被测机器会处理具体的断言逻辑
 """
 
 # 导入OpRecord类
@@ -22,8 +28,11 @@ OpRecord.click_element("+", ["push button"], "点击加号")
 OpRecord.click_element("3", ["push button"], "点击数字3")
 OpRecord.click_element("=", ["push button"], "点击等号")
 
-# 等待结果
-OpRecord.wait_for_element("结果显示区域", ["text"], "等待计算结果", timeout=5)
+# 等待结果并验证
+OpRecord.wait_for_element("", 5, ["text"], "等待结果显示")
+
+# 验证计算结果
+OpRecord.validate_result("", "", "15", ["text"], "验证计算结果为15")
 
 # 清空计算器
 OpRecord.hotkey(["Ctrl", "a"], "全选")
@@ -35,30 +44,153 @@ OpRecord.click_element("×", ["push button"], "点击乘号")
 OpRecord.click_element("4", ["push button"], "点击数字4")
 OpRecord.click_element("=", ["push button"], "点击等号")
 
-# 输入文本（如果有输入框）
-OpRecord.input_text("输入框", "测试文本", ["text field"], "在输入框中输入文本")
+# 验证乘法结果
+OpRecord.validate_result("", "", "20", ["text"], "验证乘法计算结果为20")
 
-# 组合键操作
-OpRecord.hotkey(["Ctrl", "c"], "复制")
-OpRecord.hotkey(["Ctrl", "v"], "粘贴")
+# 清空计算器
+OpRecord.click_element("C", ["push button"], "清空计算器")
 
-# 右键菜单操作
-OpRecord.right_click_element("结果区域", ["text"], "右键点击结果区域")
+# 小数计算测试
+print("开始小数计算测试...")
+OpRecord.click_element("3", ["push button"], "点击数字3")
+OpRecord.click_element(".", ["push button"], "点击小数点")
+OpRecord.click_element("1", ["push button"], "点击数字1")
+OpRecord.click_element("4", ["push button"], "点击数字4")
+OpRecord.click_element("+", ["push button"], "点击加号")
+OpRecord.click_element("2", ["push button"], "点击数字2")
+OpRecord.click_element(".", ["push button"], "点击小数点")
+OpRecord.click_element("8", ["push button"], "点击数字8")
+OpRecord.click_element("6", ["push button"], "点击数字6")
+OpRecord.click_element("=", ["push button"], "点击等号")
 
-# 双击操作
-OpRecord.double_click_element("标题栏", ["title bar"], "双击标题栏")
+# 验证小数计算结果
+OpRecord.validate_result("", "", "6", ["text"], "验证小数计算结果为6")
 
-# 拖拽操作
-OpRecord.drag_and_drop("源元素", "目标元素", ["button"], "拖拽元素")
+# 清空计算器
+OpRecord.click_element("C", ["push button"], "清空计算器")
 
-# 图像识别操作
-OpRecord.click_image("button_image.png", 0.8, [100, 100, 200, 200], "点击图片按钮")
-OpRecord.find_image("icon.png", 0.9, "查找图标")
+# 组合运算测试
+print("开始组合运算测试...")
+OpRecord.click_element("(", ["push button"], "点击左括号")
+OpRecord.click_element("1", ["push button"], "点击数字1")
+OpRecord.click_element("0", ["push button"], "点击数字0")
+OpRecord.click_element("+", ["push button"], "点击加号")
+OpRecord.click_element("5", ["push button"], "点击数字5")
+OpRecord.click_element(")", ["push button"], "点击右括号")
+OpRecord.click_element("×", ["push button"], "点击乘号")
+OpRecord.click_element("2", ["push button"], "点击数字2")
+OpRecord.click_element("=", ["push button"], "点击等号")
 
-# 截图操作
-OpRecord.get_screenshot([0, 0, 800, 600], "截取全屏")
+# 验证组合运算结果
+OpRecord.validate_result("", "", "30", ["text"], "验证组合运算结果为30")
 
-print("Python脚本编写完成！")
+# 清空计算器
+OpRecord.click_element("C", ["push button"], "清空计算器")
+
+# 除法测试
+print("开始除法测试...")
+OpRecord.click_element("1", ["push button"], "点击数字1")
+OpRecord.click_element("5", ["push button"], "点击数字5")
+OpRecord.click_element("÷", ["push button"], "点击除号")
+OpRecord.click_element("3", ["push button"], "点击数字3")
+OpRecord.click_element("=", ["push button"], "点击等号")
+
+# 验证除法结果
+OpRecord.validate_result("", "", "5", ["text"], "验证除法结果为5")
+
+# 清空计算器
+OpRecord.click_element("C", ["push button"], "清空计算器")
+
+# 负数计算测试
+print("开始负数计算测试...")
+OpRecord.click_element("-", ["push button"], "点击负号")
+OpRecord.click_element("8", ["push button"], "点击数字8")
+OpRecord.click_element("+", ["push button"], "点击加号")
+OpRecord.click_element("1", ["push button"], "点击数字1")
+OpRecord.click_element("2", ["push button"], "点击数字2")
+OpRecord.click_element("=", ["push button"], "点击等号")
+
+# 验证负数计算结果
+OpRecord.validate_result("", "", "4", ["text"], "验证负数计算结果为4")
+
+# 清空计算器
+OpRecord.click_element("C", ["push button"], "清空计算器")
+
+# 百分比计算测试
+print("开始百分比计算测试...")
+OpRecord.click_element("5", ["push button"], "点击数字5")
+OpRecord.click_element("0", ["push button"], "点击数字0")
+OpRecord.click_element("%", ["push button"], "点击百分号")
+OpRecord.click_element("=", ["push button"], "点击等号")
+
+# 验证百分比结果
+OpRecord.validate_result("", "", "0.5", ["text"], "验证百分比计算结果为0.5")
+
+# 清空计算器
+OpRecord.click_element("C", ["push button"], "清空计算器")
+
+# 平方根测试
+print("开始平方根测试...")
+OpRecord.click_element("√", ["push button"], "点击平方根")
+OpRecord.click_element("1", ["push button"], "点击数字1")
+OpRecord.click_element("6", ["push button"], "点击数字6")
+OpRecord.click_element("=", ["push button"], "点击等号")
+
+# 验证平方根结果
+OpRecord.validate_result("", "", "4", ["text"], "验证平方根结果为4")
+
+# 清空计算器
+OpRecord.click_element("C", ["push button"], "清空计算器")
+
+# 幂运算测试
+print("开始幂运算测试...")
+OpRecord.click_element("2", ["push button"], "点击数字2")
+OpRecord.click_element("^", ["push button"], "点击幂运算")
+OpRecord.click_element("3", ["push button"], "点击数字3")
+OpRecord.click_element("=", ["push button"], "点击等号")
+
+# 验证幂运算结果
+OpRecord.validate_result("", "", "8", ["text"], "验证幂运算结果为8")
+
+# 清空计算器
+OpRecord.click_element("C", ["push button"], "清空计算器")
+
+# 复杂混合运算测试
+print("开始复杂混合运算测试...")
+OpRecord.click_element("(", ["push button"], "点击左括号")
+OpRecord.click_element("2", ["push button"], "点击数字2")
+OpRecord.click_element("+", ["push button"], "点击加号")
+OpRecord.click_element("3", ["push button"], "点击数字3")
+OpRecord.click_element(")", ["push button"], "点击右括号")
+OpRecord.click_element("×", ["push button"], "点击乘号")
+OpRecord.click_element("(", ["push button"], "点击左括号")
+OpRecord.click_element("4", ["push button"], "点击数字4")
+OpRecord.click_element("-", ["push button"], "点击减号")
+OpRecord.click_element("1", ["push button"], "点击数字1")
+OpRecord.click_element(")", ["push button"], "点击右括号")
+OpRecord.click_element("=", ["push button"], "点击等号")
+
+# 验证复杂混合运算结果
+OpRecord.validate_result("", "", "15", ["text"], "验证复杂混合运算结果为15")
+
+# 清空计算器
+OpRecord.click_element("C", ["push button"], "清空计算器")
+
+# 连续运算测试
+print("开始连续运算测试...")
+OpRecord.click_element("1", ["push button"], "点击数字1")
+OpRecord.click_element("0", ["push button"], "点击数字0")
+OpRecord.click_element("+", ["push button"], "点击加号")
+OpRecord.click_element("5", ["push button"], "点击数字5")
+OpRecord.click_element("=", ["push button"], "点击等号")
+OpRecord.click_element("×", ["push button"], "点击乘号")
+OpRecord.click_element("2", ["push button"], "点击数字2")
+OpRecord.click_element("=", ["push button"], "点击等号")
+
+# 验证连续运算结果
+OpRecord.validate_result("", "", "30", ["text"], "验证连续运算结果为30")
+
+print("计算器测试脚本编写完成！")
 print(f"总共记录了 {OpRecord.getStepsCount()} 个操作步骤")
 
 # 获取目标信息
@@ -70,3 +202,4 @@ print(f"目标应用: {target_info['app_name']}")
 # json_script = OpRecord.transToJson()
 # print("JSON脚本:")
 # print(json.dumps(json_script, ensure_ascii=False, indent=2))
+

@@ -1,0 +1,668 @@
+{
+  "steps": [
+    {
+      "id": "1",
+      "type": "click_element",
+      "element_path": "1",
+      "role_name_list": [
+        "push button"
+      ]
+    },
+    {
+      "id": "2",
+      "type": "click_element",
+      "element_path": "2",
+      "role_name_list": [
+        "push button"
+      ]
+    },
+    {
+      "id": "3",
+      "type": "click_element",
+      "element_path": "+",
+      "role_name_list": [
+        "push button"
+      ]
+    },
+    {
+      "id": "4",
+      "type": "click_element",
+      "element_path": "3",
+      "role_name_list": [
+        "push button"
+      ]
+    },
+    {
+      "id": "5",
+      "type": "click_element",
+      "element_path": "=",
+      "role_name_list": [
+        "push button"
+      ]
+    },
+    {
+      "id": "6",
+      "type": "wait_element",
+      "element_path": "",
+      "timeout": 5,
+      "role_name_list": [
+        "text"
+      ]
+    },
+    {
+      "id": "8",
+      "type": "hotkey",
+      "keys": [
+        "Ctrl",
+        "a"
+      ]
+    },
+    {
+      "id": "9",
+      "type": "key_press",
+      "key": "Delete"
+    },
+    {
+      "id": "10",
+      "type": "click_element",
+      "element_path": "5",
+      "role_name_list": [
+        "push button"
+      ]
+    },
+    {
+      "id": "11",
+      "type": "click_element",
+      "element_path": "×",
+      "role_name_list": [
+        "push button"
+      ]
+    },
+    {
+      "id": "12",
+      "type": "click_element",
+      "element_path": "4",
+      "role_name_list": [
+        "push button"
+      ]
+    },
+    {
+      "id": "13",
+      "type": "click_element",
+      "element_path": "=",
+      "role_name_list": [
+        "push button"
+      ]
+    },
+    {
+      "id": "15",
+      "type": "click_element",
+      "element_path": "C",
+      "role_name_list": [
+        "push button"
+      ]
+    },
+    {
+      "id": "16",
+      "type": "click_element",
+      "element_path": "3",
+      "role_name_list": [
+        "push button"
+      ]
+    },
+    {
+      "id": "17",
+      "type": "click_element",
+      "element_path": ".",
+      "role_name_list": [
+        "push button"
+      ]
+    },
+    {
+      "id": "18",
+      "type": "click_element",
+      "element_path": "1",
+      "role_name_list": [
+        "push button"
+      ]
+    },
+    {
+      "id": "19",
+      "type": "click_element",
+      "element_path": "4",
+      "role_name_list": [
+        "push button"
+      ]
+    },
+    {
+      "id": "20",
+      "type": "click_element",
+      "element_path": "+",
+      "role_name_list": [
+        "push button"
+      ]
+    },
+    {
+      "id": "21",
+      "type": "click_element",
+      "element_path": "2",
+      "role_name_list": [
+        "push button"
+      ]
+    },
+    {
+      "id": "22",
+      "type": "click_element",
+      "element_path": ".",
+      "role_name_list": [
+        "push button"
+      ]
+    },
+    {
+      "id": "23",
+      "type": "click_element",
+      "element_path": "8",
+      "role_name_list": [
+        "push button"
+      ]
+    },
+    {
+      "id": "24",
+      "type": "click_element",
+      "element_path": "6",
+      "role_name_list": [
+        "push button"
+      ]
+    },
+    {
+      "id": "25",
+      "type": "click_element",
+      "element_path": "=",
+      "role_name_list": [
+        "push button"
+      ]
+    },
+    {
+      "id": "27",
+      "type": "click_element",
+      "element_path": "C",
+      "role_name_list": [
+        "push button"
+      ]
+    },
+    {
+      "id": "28",
+      "type": "click_element",
+      "element_path": "(",
+      "role_name_list": [
+        "push button"
+      ]
+    },
+    {
+      "id": "29",
+      "type": "click_element",
+      "element_path": "1",
+      "role_name_list": [
+        "push button"
+      ]
+    },
+    {
+      "id": "30",
+      "type": "click_element",
+      "element_path": "0",
+      "role_name_list": [
+        "push button"
+      ]
+    },
+    {
+      "id": "31",
+      "type": "click_element",
+      "element_path": "+",
+      "role_name_list": [
+        "push button"
+      ]
+    },
+    {
+      "id": "32",
+      "type": "click_element",
+      "element_path": "5",
+      "role_name_list": [
+        "push button"
+      ]
+    },
+    {
+      "id": "33",
+      "type": "click_element",
+      "element_path": ")",
+      "role_name_list": [
+        "push button"
+      ]
+    },
+    {
+      "id": "34",
+      "type": "click_element",
+      "element_path": "×",
+      "role_name_list": [
+        "push button"
+      ]
+    },
+    {
+      "id": "35",
+      "type": "click_element",
+      "element_path": "2",
+      "role_name_list": [
+        "push button"
+      ]
+    },
+    {
+      "id": "36",
+      "type": "click_element",
+      "element_path": "=",
+      "role_name_list": [
+        "push button"
+      ]
+    },
+    {
+      "id": "38",
+      "type": "click_element",
+      "element_path": "C",
+      "role_name_list": [
+        "push button"
+      ]
+    },
+    {
+      "id": "39",
+      "type": "click_element",
+      "element_path": "1",
+      "role_name_list": [
+        "push button"
+      ]
+    },
+    {
+      "id": "40",
+      "type": "click_element",
+      "element_path": "5",
+      "role_name_list": [
+        "push button"
+      ]
+    },
+    {
+      "id": "41",
+      "type": "click_element",
+      "element_path": "÷",
+      "role_name_list": [
+        "push button"
+      ]
+    },
+    {
+      "id": "42",
+      "type": "click_element",
+      "element_path": "3",
+      "role_name_list": [
+        "push button"
+      ]
+    },
+    {
+      "id": "43",
+      "type": "click_element",
+      "element_path": "=",
+      "role_name_list": [
+        "push button"
+      ]
+    },
+    {
+      "id": "45",
+      "type": "click_element",
+      "element_path": "C",
+      "role_name_list": [
+        "push button"
+      ]
+    },
+    {
+      "id": "46",
+      "type": "click_element",
+      "element_path": "-",
+      "role_name_list": [
+        "push button"
+      ]
+    },
+    {
+      "id": "47",
+      "type": "click_element",
+      "element_path": "8",
+      "role_name_list": [
+        "push button"
+      ]
+    },
+    {
+      "id": "48",
+      "type": "click_element",
+      "element_path": "+",
+      "role_name_list": [
+        "push button"
+      ]
+    },
+    {
+      "id": "49",
+      "type": "click_element",
+      "element_path": "1",
+      "role_name_list": [
+        "push button"
+      ]
+    },
+    {
+      "id": "50",
+      "type": "click_element",
+      "element_path": "2",
+      "role_name_list": [
+        "push button"
+      ]
+    },
+    {
+      "id": "51",
+      "type": "click_element",
+      "element_path": "=",
+      "role_name_list": [
+        "push button"
+      ]
+    },
+    {
+      "id": "53",
+      "type": "click_element",
+      "element_path": "C",
+      "role_name_list": [
+        "push button"
+      ]
+    },
+    {
+      "id": "54",
+      "type": "click_element",
+      "element_path": "5",
+      "role_name_list": [
+        "push button"
+      ]
+    },
+    {
+      "id": "55",
+      "type": "click_element",
+      "element_path": "0",
+      "role_name_list": [
+        "push button"
+      ]
+    },
+    {
+      "id": "56",
+      "type": "click_element",
+      "element_path": "%",
+      "role_name_list": [
+        "push button"
+      ]
+    },
+    {
+      "id": "57",
+      "type": "click_element",
+      "element_path": "=",
+      "role_name_list": [
+        "push button"
+      ]
+    },
+    {
+      "id": "59",
+      "type": "click_element",
+      "element_path": "C",
+      "role_name_list": [
+        "push button"
+      ]
+    },
+    {
+      "id": "60",
+      "type": "click_element",
+      "element_path": "√",
+      "role_name_list": [
+        "push button"
+      ]
+    },
+    {
+      "id": "61",
+      "type": "click_element",
+      "element_path": "1",
+      "role_name_list": [
+        "push button"
+      ]
+    },
+    {
+      "id": "62",
+      "type": "click_element",
+      "element_path": "6",
+      "role_name_list": [
+        "push button"
+      ]
+    },
+    {
+      "id": "63",
+      "type": "click_element",
+      "element_path": "=",
+      "role_name_list": [
+        "push button"
+      ]
+    },
+    {
+      "id": "65",
+      "type": "click_element",
+      "element_path": "C",
+      "role_name_list": [
+        "push button"
+      ]
+    },
+    {
+      "id": "66",
+      "type": "click_element",
+      "element_path": "2",
+      "role_name_list": [
+        "push button"
+      ]
+    },
+    {
+      "id": "67",
+      "type": "click_element",
+      "element_path": "^",
+      "role_name_list": [
+        "push button"
+      ]
+    },
+    {
+      "id": "68",
+      "type": "click_element",
+      "element_path": "3",
+      "role_name_list": [
+        "push button"
+      ]
+    },
+    {
+      "id": "69",
+      "type": "click_element",
+      "element_path": "=",
+      "role_name_list": [
+        "push button"
+      ]
+    },
+    {
+      "id": "71",
+      "type": "click_element",
+      "element_path": "C",
+      "role_name_list": [
+        "push button"
+      ]
+    },
+    {
+      "id": "72",
+      "type": "click_element",
+      "element_path": "(",
+      "role_name_list": [
+        "push button"
+      ]
+    },
+    {
+      "id": "73",
+      "type": "click_element",
+      "element_path": "2",
+      "role_name_list": [
+        "push button"
+      ]
+    },
+    {
+      "id": "74",
+      "type": "click_element",
+      "element_path": "+",
+      "role_name_list": [
+        "push button"
+      ]
+    },
+    {
+      "id": "75",
+      "type": "click_element",
+      "element_path": "3",
+      "role_name_list": [
+        "push button"
+      ]
+    },
+    {
+      "id": "76",
+      "type": "click_element",
+      "element_path": ")",
+      "role_name_list": [
+        "push button"
+      ]
+    },
+    {
+      "id": "77",
+      "type": "click_element",
+      "element_path": "×",
+      "role_name_list": [
+        "push button"
+      ]
+    },
+    {
+      "id": "78",
+      "type": "click_element",
+      "element_path": "(",
+      "role_name_list": [
+        "push button"
+      ]
+    },
+    {
+      "id": "79",
+      "type": "click_element",
+      "element_path": "4",
+      "role_name_list": [
+        "push button"
+      ]
+    },
+    {
+      "id": "80",
+      "type": "click_element",
+      "element_path": "-",
+      "role_name_list": [
+        "push button"
+      ]
+    },
+    {
+      "id": "81",
+      "type": "click_element",
+      "element_path": "1",
+      "role_name_list": [
+        "push button"
+      ]
+    },
+    {
+      "id": "82",
+      "type": "click_element",
+      "element_path": ")",
+      "role_name_list": [
+        "push button"
+      ]
+    },
+    {
+      "id": "83",
+      "type": "click_element",
+      "element_path": "=",
+      "role_name_list": [
+        "push button"
+      ]
+    },
+    {
+      "id": "85",
+      "type": "click_element",
+      "element_path": "C",
+      "role_name_list": [
+        "push button"
+      ]
+    },
+    {
+      "id": "86",
+      "type": "click_element",
+      "element_path": "1",
+      "role_name_list": [
+        "push button"
+      ]
+    },
+    {
+      "id": "87",
+      "type": "click_element",
+      "element_path": "0",
+      "role_name_list": [
+        "push button"
+      ]
+    },
+    {
+      "id": "88",
+      "type": "click_element",
+      "element_path": "+",
+      "role_name_list": [
+        "push button"
+      ]
+    },
+    {
+      "id": "89",
+      "type": "click_element",
+      "element_path": "5",
+      "role_name_list": [
+        "push button"
+      ]
+    },
+    {
+      "id": "90",
+      "type": "click_element",
+      "element_path": "=",
+      "role_name_list": [
+        "push button"
+      ]
+    },
+    {
+      "id": "91",
+      "type": "click_element",
+      "element_path": "×",
+      "role_name_list": [
+        "push button"
+      ]
+    },
+    {
+      "id": "92",
+      "type": "click_element",
+      "element_path": "2",
+      "role_name_list": [
+        "push button"
+      ]
+    },
+    {
+      "id": "93",
+      "type": "click_element",
+      "element_path": "=",
+      "role_name_list": [
+        "push button"
+      ]
+    }
+  ],
+  "target_machine_ip": "192.168.1.100",
+  "target_app_name": "calculator"
+}
