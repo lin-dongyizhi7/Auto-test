@@ -1,120 +1,283 @@
-Auto-test 后端（服务端内置测试服务器）
-=====================================
+# 自动化测试系统后端
 
-本后端基于 FastAPI 实现，采用“服务端内置测试服务器”运行模式：后端进程内启动并管理测试服务器，对外提供 HTTP API，由前端或第三方调用。
+基于 FastAPI 的多机器多应用自动化测试后端服务，采用"服务端内置测试服务器"运行模式。
 
-- 运行框架: FastAPI + Uvicorn
-- 内置测试服务器封装: `communicators.operation_multi_machine.MultiMachineOperation`
-- 监听端口（HTTP API）: 默认 8080（可在启动命令中调整）
-- 内置测试服务器端口: 默认 8889（可通过 `/connect` 传入）
+## 系统架构
 
-快速开始
---------
+- **运行框架**: FastAPI + Uvicorn
+- **内置测试服务器**: 基于 `communicators.test_communicator.TestMachineCommunicator`
+- **操作封装**: `communicators.operation_multi_machine.MultiMachineOperation`
+- **HTTP API 端口**: 8080（固定）
+- **内置测试服务器端口**: 8888（固定）
+- **脚本存储**: JSON 文件 + 独立脚本目录
 
-1) 安装依赖
+## 快速开始
+
+### 1. 环境要求
+
+- Python 3.8+
+- pip
+
+### 2. 安装依赖
 
 ```bash
 cd backend
 pip install -r requirements.txt
 ```
 
-2) 启动服务
+### 3. 启动服务
 
-- Windows
+**Windows:**
 ```bat
 start.bat
 ```
 
-- Linux / macOS
+**Linux/macOS:**
 ```bash
-bash start.sh
+chmod +x start.sh
+./start.sh
 ```
 
-启动后：
-- 后端 API: `http://localhost:8080`
-- Swagger 文档: `http://localhost:8080/docs`
+**手动启动:**
+```bash
+python -m uvicorn app:app --host 0.0.0.0 --port 8080
+```
 
-运行模式说明（重要）
---------------------
+### 4. 访问服务
 
-- 通过调用 `/connect` 启动“内置测试服务器”（在后端进程内启动，监听在 0.0.0.0:PORT）。
-- `/disconnect` 停止“内置测试服务器”。
-- 任何需要与被测机/应用交互的 API，都会在未启动时返回错误（请先调用 `/connect`）。
+- **后端 API**: http://localhost:8080
+- **API 文档**: http://localhost:8080/docs
+- **健康检查**: http://localhost:8080/health
 
-API 总览
---------
+## 运行模式
 
-以下为主要端点及其用途（详细请求/响应可在 Swagger 查看）。
+- **自动启动**: 后端启动时自动启动内置测试服务器（监听 8888 端口）
+- **多机器管理**: 支持同时连接多台被测试机器
+- **多应用支持**: 每台机器可注册多个应用程序
+- **脚本存储**: 使用 JSON 文件存储脚本元数据，脚本内容存储在独立文件中
 
-1. 基础
-- GET `/`：服务信息
-- GET `/status`：服务状态（connected/host/port/mode）
-- POST `/connect`：启动内置测试服务器（Body: `{ "port": 8889 }`）
-- POST `/disconnect`：停止内置测试服务器
+## API 接口
 
-2. 多机器 / 多应用管理
-- GET `/machines`：获取机器列表
-- GET `/apps`：获取应用列表（可选 `machine_id` 查询参数）
-- POST `/set-target`：设置当前目标（Body: `{ "machine_id": "m1", "app_name": "calculator" }`）
-- GET `/current-target`：查看当前目标
+### 服务器管理
 
-3. 截图与交互
-- POST `/screenshot`：获取当前目标的截图（Query: `region` 可选，`x,y,width,height`）
-- POST `/click-element`：点击元素（Body: `{ "path": "菜单/文件/新建", "roles": ["menu item"] }`）
-- POST `/click-image`：点击图片（Body: `{ "imagePath": "/path/to/img.png", "threshold": 0.8 }`）
-- POST `/drag-to`：拖拽操作（Body: `{ "startX": 10, "startY": 10, "endX": 100, "endY": 100 }`）
-- POST `/input-text`：文本输入（Body: `{ "text": "hello", "elementPath": "输入框" }`）
-- POST `/hotkey`：组合键（Body: `{ "keys": ["Ctrl", "s"] }`）
+- `POST /api/server/start` - 启动内置测试服务器
+- `POST /api/server/stop` - 停止内置测试服务器  
+- `GET /api/server/status` - 获取服务器状态
 
-4. 元素/图片信息
-- GET `/element-info`（如保留）：根据 `path`、`roles` 查询元素信息
-- POST `/find-image`（如保留）：查找图片（返回匹配信息）
+### 机器与应用管理
 
-> 说明：如未在 `backend/app.py` 中实现上述“保留”接口，请依据需要补充；前端目前主要使用点击/截图/目标设置等核心端点。
+- `GET /api/machines` - 获取已连接机器列表
+- `POST /api/machine/connect` - 连接目标机器（固定使用 8888 端口）
+- `POST /api/machine/disconnect` - 断开机器连接
+- `GET /api/apps` - 获取已注册应用列表
+- `POST /api/target/set` - 设置当前操作目标
+- `GET /api/target/current` - 获取当前操作目标
 
-5. 脚本管理
-- GET `/scripts`：列表
-- GET `/scripts/{id}`：详情
-- POST `/scripts`：创建（支持 `target_machine_id` / `target_app_name`）
-- PUT `/scripts/{id}`：更新
-- DELETE `/scripts/{id}`：删除
-- POST `/scripts/{id}/run`：运行脚本（后端生成临时文件并调用 Python 执行）
-- POST `/scripts/import`：导入 `.py` 脚本（multipart）
-- GET `/scripts/{id}/export`：导出脚本内容
+### 元素操作
 
-启动/停止流程（调用建议）
---------------------------
+- `POST /api/element/click` - 点击元素
+- `POST /api/element/right-click` - 右键点击元素
+- `POST /api/element/double-click` - 双击元素
+- `POST /api/element/set-text` - 设置元素文本
+- `POST /api/element/move-to` - 移动到元素中心
 
-1) 启动后端 HTTP 服务（8080）
-2) 调用 `POST /connect`，Body 例如 `{ "port": 8889 }`
-3) 调用 `GET /machines`、`GET /apps` 获取资源
-4) 调用 `POST /set-target` 设定当前目标
-5) 执行交互：`/click-element`、`/screenshot`、`/hotkey` ...
-6) 完成后可调用 `POST /disconnect` 停止内置测试服务器
+### 图像操作
 
-环境变量
---------
-- `TEST_SERVER_PORT`：未传入 `/connect` 时的默认内置测试服务器端口（默认 8889）
+- `POST /api/image/find` - 查找图片
+- `POST /api/image/click` - 点击图片
+- `GET /api/screenshot` - 获取截图
 
-目录结构
---------
+### 键盘操作
+
+- `POST /api/keyboard/hotkey` - 发送组合键
+- `POST /api/keyboard/type` - 输入文本
+
+### 等待操作
+
+- `POST /api/wait/element` - 等待元素出现
+- `POST /api/wait/image` - 等待图片出现
+
+### 脚本管理
+
+- `GET /api/scripts` - 获取脚本列表
+- `GET /api/scripts/{id}` - 获取脚本详情
+- `POST /api/scripts` - 创建脚本
+- `PUT /api/scripts/{id}` - 更新脚本
+- `DELETE /api/scripts/{id}` - 删除脚本
+- `POST /api/scripts/{id}/run` - 运行脚本
+
+### Python脚本管理
+
+- `POST /api/scripts/python/run` - 运行Python脚本
+- `POST /api/scripts/python/validate` - 验证Python脚本语法
+- `POST /api/scripts/python/convert` - 将Python脚本转换为JSON脚本并保存
+
+### 事件管理
+
+- `GET /api/events` - 获取事件历史
+
+## 使用流程
+
+1. **启动后端服务**（自动启动内置测试服务器）
+2. **连接被测试机器**：`POST /api/machine/connect`，Body: `{"host": "192.168.1.100"}`
+3. **获取资源列表**：`GET /api/machines`、`GET /api/apps`
+4. **设置操作目标**：`POST /api/target/set`，Body: `{"machine_id": "machine_001", "app_name": "calculator"}`
+5. **执行操作**：调用各种操作 API（点击、输入、截图等）
+6. **运行脚本**：`POST /api/scripts/{id}/run`
+7. **运行Python脚本**：`POST /api/scripts/python/run`
+
+## Python脚本API详细说明
+
+### 运行Python脚本
+
+**端点**: `POST /api/scripts/python/run`
+
+**请求体**:
+```json
+{
+  "script_content": "from op_record import OpRecord\nOpRecord.setMachine('192.168.1.100', 'calculator')\nOpRecord.click_element('按钮', ['push button'])",
+  "target_machine_ip": "192.168.1.100",
+  "target_app_name": "calculator"
+}
+```
+
+**响应**:
+```json
+{
+  "success": true,
+  "data": {...},
+  "message": "Python脚本执行成功"
+}
+```
+
+### 验证Python脚本语法
+
+**端点**: `POST /api/scripts/python/validate`
+
+**请求体**:
+```json
+{
+  "script_content": "from op_record import OpRecord\nOpRecord.setMachine('192.168.1.100', 'calculator')"
+}
+```
+
+**响应**:
+```json
+{
+  "success": true,
+  "message": "Python脚本语法正确"
+}
+```
+
+### Python脚本编写规范
+
+1. **导入OpRecord类**:
+   ```python
+   from op_record import OpRecord
+   ```
+
+2. **设置目标机器和应用**:
+   ```python
+   OpRecord.setMachine("192.168.1.100", "calculator")
+   ```
+
+3. **编写操作步骤**:
+   ```python
+   OpRecord.click_element("按钮", ["push button"])
+   OpRecord.input_text("输入框", "测试文本")
+   OpRecord.hotkey(["Ctrl", "c"])
+   ```
+
+4. **支持的操作类型**:
+   - 鼠标操作：`click_element`, `right_click_element`, `double_click_element`
+   - 键盘操作：`input_text`, `hotkey`, `key_press`
+   - 等待操作：`wait_for_element`, `wait_for_image`
+   - 图像识别：`click_image`, `find_image`
+   - 截图操作：`get_screenshot`
+
+### 转换Python脚本为JSON脚本
+
+**端点**: `POST /api/scripts/python/convert`
+
+**请求体**:
+```json
+{
+  "script_content": "from op_record import OpRecord\nOpRecord.setMachine('192.168.1.100', 'calculator')\nOpRecord.click_element('按钮', ['push button'])",
+  "script_name": "转换后的脚本",
+  "description": "从Python脚本转换而来",
+  "target_machine_ip": "192.168.1.100",
+  "target_app_name": "calculator"
+}
+```
+
+**响应**:
+```json
+{
+  "success": true,
+  "data": {
+    "id": "script_2",
+    "name": "转换后的脚本",
+    "description": "从Python脚本转换而来",
+    "content": "{\"target_machine_ip\":\"192.168.1.100\",\"target_app_name\":\"calculator\",\"steps\":[...]}",
+    "createdAt": "2024-01-01T00:00:00",
+    "updatedAt": "2024-01-01T00:00:00"
+  },
+  "message": "Python脚本已成功转换为JSON脚本: 转换后的脚本"
+}
+```
+
+**功能说明**:
+- 将Python脚本解析为JSON格式
+- 自动保存为JSON脚本到后端存储
+- 支持自定义脚本名称和描述
+- 可选择设置目标机器和应用
+- 转换成功后自动刷新脚本列表
+
+## 脚本存储
+
+- **元数据文件**: `script_info.json` - 存储脚本基本信息
+- **脚本内容目录**: `scripts_store/` - 存储脚本内容文件
+- **文件格式**: JSON 格式的测试步骤定义
+
+## 目录结构
 
 ```
 backend/
-  app.py              # 全新后端入口（FastAPI 应用）
-  requirements.txt    # 依赖
-  start.bat           # Windows 启动脚本（uvicorn）
-  start.sh            # Linux/macOS 启动脚本（uvicorn）
+├── app.py                    # FastAPI 应用入口
+├── config.py                 # 配置文件
+├── requirements.txt          # Python 依赖
+├── start.bat                 # Windows 启动脚本
+├── start.sh                  # Linux/macOS 启动脚本
+├── script_info.json          # 脚本元数据文件
+├── scripts_store/            # 脚本内容目录
+│   └── script_1.json        # 示例脚本
+└── routes/                   # 路由模块
+    ├── __init__.py
+    ├── server.py            # 服务器管理路由
+    ├── machine.py           # 机器管理路由
+    ├── operation.py         # 操作路由
+    └── script.py            # 脚本管理路由
 ```
 
-常见问题
---------
-- 报错“测试服务器未启动”：先调用 `POST /connect`。
-- 端口被占用：变更 `/connect` 的 `port`，或释放占用进程。
-- 图片/元素操作失败：确保被测机客户端已注册到测试服务器，并正确设置目标（machine_id/app_name）。
+## 环境变量
 
-——
-如需扩展端点或调整返回结构，请直接修改 `backend/app.py` 并同步更新前端调用。
+- `TEST_SERVER_PORT`: 内置测试服务器端口（默认 8888）
+- `SCRIPT_STORAGE_DIR`: 脚本存储目录
+- `LOG_LEVEL`: 日志级别（默认 INFO）
+
+## 常见问题
+
+- **连接失败**: 检查被测试机器是否启动客户端服务
+- **操作失败**: 确认已设置正确的目标机器和应用
+- **脚本执行失败**: 检查脚本格式和路径是否正确
+- **端口冲突**: 检查 8080 和 8888 端口是否被占用
+
+## 开发说明
+
+如需扩展功能或修改 API，请：
+1. 修改对应的路由文件（`routes/` 目录下）
+2. 更新 `app.py` 中的路由注册
+3. 同步更新前端 API 调用
 
 
 

@@ -3,29 +3,36 @@
 """
 全新后端（服务端运行模式）
  - 使用 FastAPI 暴露 HTTP API
- - 在本进程内启动并管理内置测试服务器（通过 communicators.operation_multi_machine.MultiMachineOperation）
+ - 在本进程内启动并管理内置测试服务器（通过 communicators.test_communicator.TestMachineCommunicator）
  - 提供多机器/多应用的管理与操作端点
  - 提供脚本管理端点（使用JSON文件持久化存储）
 """
 
 import os
 import sys
-import json
 import logging
-from typing import Dict, List, Optional, Any
-from datetime import datetime
+import threading
 import time
+from typing import Optional
+from datetime import datetime
+from contextlib import asynccontextmanager
 
 # 项目根目录加入路径
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from fastapi import FastAPI, HTTPException, UploadFile, File
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response
-from pydantic import BaseModel, Field
 
+from communicators.test_communicator import TestMachineCommunicator
 from communicators.operation_multi_machine import MultiMachineOperation
 from config import config
+
+# 导入路由模块
+from routes.server import router as server_router, set_global_state as set_server_state
+from routes.machine import router as machine_router, set_global_state as set_machine_state
+from routes.operation import router as operation_router, set_global_state as set_operation_state
+from routes.script import router as script_router, set_global_state as set_script_state
+from routes.logs import router as logs_router, set_global_state as set_logs_state
 
 # 配置日志
 logging.basicConfig(
@@ -35,670 +42,243 @@ logging.basicConfig(
 logger = logging.getLogger("backend.app")
 
 # 全局运行状态
-server: Optional[MultiMachineOperation] = None
+communicator: Optional[TestMachineCommunicator] = None
+operation: Optional[MultiMachineOperation] = None
 is_running = False
 current_machine_id: Optional[str] = None
 current_app_name: Optional[str] = None
+_monitor_thread: Optional[threading.Thread] = None
+_monitor_stop_flag: bool = False
 
-# 脚本存储文件路径（从配置文件获取）
-SCRIPT_STORAGE_FILE = config.SCRIPT_STORAGE_FILE
-SCRIPT_COUNTER_FILE = config.SCRIPT_COUNTER_FILE
+def _connection_monitor_loop(get_communicator, get_machine_manager, interval_seconds: int = 3) -> None:
+    """后台线程：定期同步机器连接状态到 machine_info.json
 
-class OperationResult(BaseModel):
-    success: bool
-    data: Optional[Any] = None
-    error: Optional[str] = None
-    message: Optional[str] = None
-
-class StartServerRequest(BaseModel):
-    port: int = Field(config.DEFAULT_PORT, description="内置测试服务器监听端口")
-
-class MachineAppTargetRequest(BaseModel):
-    machine_id: str
-    app_name: str
-
-class ElementOperationRequest(BaseModel):
-    path: str
-    roles: Optional[List[str]] = None
-
-class ImageOperationRequest(BaseModel):
-    imagePath: str
-    threshold: float = 0.8
-
-class DragRequest(BaseModel):
-    startX: int
-    startY: int
-    endX: int
-    endY: int
-
-class TextInputRequest(BaseModel):
-    text: str
-    elementPath: Optional[str] = None
-
-class HotkeyRequest(BaseModel):
-    keys: List[str]
-
-class ScriptInfo(BaseModel):
-    id: str
-    name: str
-    description: Optional[str] = None
-    content: str
-    createdAt: str
-    updatedAt: str
-    status: str = "idle"
-    lastRunTime: Optional[str] = None
-    runCount: int = 0
-    target_machine_id: Optional[str] = None
-    target_app_name: Optional[str] = None
-
-class CreateScriptRequest(BaseModel):
-    name: str
-    description: Optional[str] = None
-    content: str
-    target_machine_id: Optional[str] = None
-    target_app_name: Optional[str] = None
-
-class UpdateScriptRequest(BaseModel):
-    name: Optional[str] = None
-    description: Optional[str] = None
-    content: Optional[str] = None
-    target_machine_id: Optional[str] = None
-    target_app_name: Optional[str] = None
-
-class ScriptRunResult(BaseModel):
-    success: bool
-    output: Optional[str] = None
-    error: Optional[str] = None
-    executionTime: Optional[int] = None
-
-# 脚本存储管理类
-class ScriptStorageManager:
-    def __init__(self, storage_file: str, counter_file: str):
-        self.storage_file = storage_file
-        self.counter_file = counter_file
-        self.scripts_storage: Dict[str, ScriptInfo] = {}
-        self.script_counter = 0
-        self._ensure_storage_dir()
-        self._load_data()
-    
-    def _ensure_storage_dir(self):
-        """确保存储目录存在"""
-        storage_dir = os.path.dirname(self.storage_file)
-        if not os.path.exists(storage_dir):
-            os.makedirs(storage_dir, exist_ok=True)
-            logger.info(f"创建脚本存储目录: {storage_dir}")
-    
-    def _load_data(self):
-        """从JSON文件加载脚本数据"""
+    逻辑：
+    - 从 communicator 读取当前已连接机器的地址集合
+    - 遍历 machine_info 中的所有机器，按 (host, port) 是否在连接集合内，更新状态
+    - 仅在状态变更时写入，减少 IO
+    """
+    global _monitor_stop_flag
+    while not _monitor_stop_flag:
         try:
-            # 加载脚本存储
-            if os.path.exists(self.storage_file):
-                with open(self.storage_file, 'r', encoding='utf-8') as f:
-                    scripts_data = json.load(f)
-                    # 将字典数据转换为ScriptInfo对象
-                    for script_id, script_data in scripts_data.items():
-                        self.scripts_storage[script_id] = ScriptInfo(**script_data)
-                logger.info(f"从文件加载了 {len(self.scripts_storage)} 个脚本")
-            else:
-                logger.info("脚本存储文件不存在，使用空存储")
-            
-            # 加载脚本计数器
-            if os.path.exists(self.counter_file):
-                with open(self.counter_file, 'r', encoding='utf-8') as f:
-                    counter_data = json.load(f)
-                    self.script_counter = counter_data.get('counter', 0)
-                logger.info(f"脚本计数器: {self.script_counter}")
-            else:
-                logger.info("脚本计数器文件不存在，使用默认值0")
-                
-        except Exception as e:
-            logger.error(f"加载脚本数据失败: {e}")
-            # 使用默认值
-            self.scripts_storage = {}
-            self.script_counter = 0
+            comm = get_communicator()
+            machine_manager = get_machine_manager()
+            if not comm or not machine_manager:
+                time.sleep(interval_seconds)
+                continue
+
+            # 构建已连接地址集合
+            connected_addresses = set()
+            try:
+                for mid, m in getattr(comm, "machines", {}).items():
+                    if m.get("status") == "connected" and isinstance(m.get("address"), tuple):
+                        connected_addresses.add(m["address"])  # (host, port)
+            except Exception:
+                connected_addresses = set()
+
+            # 遍历已登记的机器，按地址判断是否连接
+            try:
+                machines = machine_manager.get_all_machines()
+            except Exception:
+                machines = []
+
+            for machine in machines:
+                host = machine.get("host")
+                port = machine.get("port")
+                current_status = machine.get("status", "disconnected")
+                is_connected_now = (host, port) in connected_addresses
+                target_status = "connected" if is_connected_now else "disconnected"
+
+                if target_status != current_status:
+                    try:
+                        machine_manager.update_machine_status(machine.get("id"), target_status)
+                        logging.getLogger("backend.app").info(
+                            f"监控更新机器状态: {machine.get('id')} ({host}:{port}) -> {target_status}"
+                        )
+                    except Exception:
+                        pass
+
+        except Exception as _:
+            # 防御式：任何异常不应终止监控线程
+            pass
+        finally:
+            time.sleep(interval_seconds)
+
+# 生命周期事件处理
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """应用生命周期管理"""
+    global communicator, operation, is_running, _monitor_stop_flag, _monitor_thread
     
-    def _save_data(self):
-        """保存脚本数据到JSON文件"""
-        try:
-            # 确保存储目录存在
-            self._ensure_storage_dir()
-            
-            # 保存脚本存储
-            scripts_data = {}
-            for script_id, script_info in self.scripts_storage.items():
-                scripts_data[script_id] = script_info.model_dump()
-            
-            with open(self.storage_file, 'w', encoding='utf-8') as f:
-                json.dump(scripts_data, f, ensure_ascii=False, indent=2)
-            
-            # 保存脚本计数器
-            with open(self.counter_file, 'w', encoding='utf-8') as f:
-                json.dump({'counter': self.script_counter}, f, ensure_ascii=False, indent=2)
-                
-            logger.info("脚本数据保存成功")
-            
-        except Exception as e:
-            logger.error(f"保存脚本数据失败: {e}")
-            raise
+    # 启动时处理
+    logger.info("后端应用启动")
     
-    def get_all_scripts(self) -> List[ScriptInfo]:
-        """获取所有脚本"""
-        return list(self.scripts_storage.values())
+    # 重置所有机器的连接状态为未连接
+    try:
+        from routes.machine import machine_manager
+        reset_count = machine_manager.reset_all_machine_status()
+        logger.info(f"启动时重置了 {reset_count} 个机器的连接状态")
+    except Exception as e:
+        logger.warning(f"重置机器状态失败: {e}")
     
-    def get_script(self, script_id: str) -> Optional[ScriptInfo]:
-        """获取单个脚本"""
-        return self.scripts_storage.get(script_id)
-    
-    def create_script(self, req: CreateScriptRequest) -> ScriptInfo:
-        """创建新脚本"""
-        # 检查脚本大小
-        if len(req.content.encode('utf-8')) > config.SCRIPT_MAX_SIZE:
-            raise ValueError(f"脚本内容过大，最大允许 {config.SCRIPT_MAX_SIZE} 字节")
-        
-        self.script_counter += 1
-        script_id = f"script_{self.script_counter}"
-        
-        now = datetime.now().isoformat()
-        script_info = ScriptInfo(
-            id=script_id,
-            name=req.name,
-            description=req.description,
-            content=req.content,
-            createdAt=now,
-            updatedAt=now,
-            target_machine_id=req.target_machine_id,
-            target_app_name=req.target_app_name
+    # 默认启动测试服务器
+    try:
+        communicator = TestMachineCommunicator(
+            server_host="0.0.0.0",
+            server_port=8888,
+            server_id="backend_server"
         )
+        communicator.start_server()
         
-        self.scripts_storage[script_id] = script_info
-        self._save_data()
+        # 创建操作类
+        operation = MultiMachineOperation(communicator)
         
-        logger.info(f"创建脚本成功: {script_id} - {req.name}")
-        return script_info
-    
-    def update_script(self, script_id: str, req: UpdateScriptRequest) -> Optional[ScriptInfo]:
-        """更新脚本"""
-        if script_id not in self.scripts_storage:
-            return None
+        is_running = True
         
-        script_info = self.scripts_storage[script_id]
+        # 设置全局状态到各个路由模块
+        set_server_state(communicator, operation, is_running)
+        set_machine_state(communicator, operation, is_running)
+        set_operation_state(communicator, operation, is_running)
+        set_script_state(communicator, operation, is_running)
+        set_logs_state(communicator, operation, is_running)
         
-        # 更新字段
-        if req.name is not None:
-            script_info.name = req.name
-        if req.description is not None:
-            script_info.description = req.description
-        if req.content is not None:
-            # 检查脚本大小
-            if len(req.content.encode('utf-8')) > config.SCRIPT_MAX_SIZE:
-                raise ValueError(f"脚本内容过大，最大允许 {config.SCRIPT_MAX_SIZE} 字节")
-            script_info.content = req.content
-        if req.target_machine_id is not None:
-            script_info.target_machine_id = req.target_machine_id
-        if req.target_app_name is not None:
-            script_info.target_app_name = req.target_app_name
-        
-        script_info.updatedAt = datetime.now().isoformat()
-        
-        self._save_data()
-        
-        logger.info(f"更新脚本成功: {script_id}")
-        return script_info
-    
-    def delete_script(self, script_id: str) -> bool:
-        """删除脚本"""
-        if script_id not in self.scripts_storage:
-            return False
-        
-        script_name = self.scripts_storage[script_id].name
-        del self.scripts_storage[script_id]
-        self._save_data()
-        
-        logger.info(f"删除脚本成功: {script_id} - {script_name}")
-        return True
-    
-    def update_script_status(self, script_id: str, status: str, run_count: int = None, last_run_time: str = None):
-        """更新脚本状态"""
-        if script_id not in self.scripts_storage:
-            return False
-        
-        script_info = self.scripts_storage[script_id]
-        script_info.status = status
-        script_info.updatedAt = datetime.now().isoformat()
-        
-        if run_count is not None:
-            script_info.runCount = run_count
-        if last_run_time is not None:
-            script_info.lastRunTime = last_run_time
-        
-        self._save_data()
-        return True
-    
-    def backup_data(self, backup_dir: str = None):
-        """备份脚本数据"""
-        if not backup_dir:
-            backup_dir = os.path.join(os.path.dirname(self.storage_file), "backup")
-        
-        if not os.path.exists(backup_dir):
-            os.makedirs(backup_dir, exist_ok=True)
-        
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        
-        # 备份脚本存储文件
-        backup_storage_file = os.path.join(backup_dir, f"scripts_storage_{timestamp}.json")
-        if os.path.exists(self.storage_file):
-            import shutil
-            shutil.copy2(self.storage_file, backup_storage_file)
-            logger.info(f"脚本存储备份到: {backup_storage_file}")
-        
-        # 备份计数器文件
-        backup_counter_file = os.path.join(backup_dir, f"script_counter_{timestamp}.json")
-        if os.path.exists(self.counter_file):
-            import shutil
-            shutil.copy2(self.counter_file, backup_counter_file)
-            logger.info(f"脚本计数器备份到: {backup_counter_file}")
+        logger.info("测试服务器已默认启动，监听端口: 8888")
 
-# 创建脚本存储管理器实例
-script_manager = ScriptStorageManager(SCRIPT_STORAGE_FILE, SCRIPT_COUNTER_FILE)
+        # 启动后台监控线程：同步断连状态到 machine_info
+        try:
+            from routes.machine import machine_manager as _machine_manager_singleton
+            def _get_comm():
+                return communicator
+            def _get_mm():
+                return _machine_manager_singleton
+            _monitor_stop_flag = False
+            _monitor_thread = threading.Thread(
+                target=_connection_monitor_loop,
+                args=(_get_comm, _get_mm, 3),
+                daemon=True
+            )
+            _monitor_thread.start()
+            logger.info("机器连接状态监控线程已启动")
+        except Exception as e:
+            logger.warning(f"启动连接监控线程失败: {e}")
+        
+    except Exception as e:
+        logger.error(f"默认启动测试服务器失败: {e}")
+        is_running = False
+    
+    yield
+    
+    # 关闭时处理
+    logger.info("后端应用关闭")
+    # 停止监控线程
+    try:
+        _monitor_stop_flag = True
+        if _monitor_thread and _monitor_thread.is_alive():
+            _monitor_thread.join(timeout=2)
+    except Exception:
+        pass
+    
+    # 清理资源
+    if operation:
+        operation.close()
+    
+    if communicator:
+        communicator.stop_server()
 
-app = FastAPI(title="AutoTest Backend (Server Mode)")
+# 创建FastAPI应用
+app = FastAPI(
+    title="自动化测试系统后端API",
+    description="提供多机器自动化测试的后端服务",
+    version="1.0.0",
+    lifespan=lifespan
+)
+
+# 添加CORS中间件
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=config.ALLOWED_ORIGINS,
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# 应用启动时自动启动内置测试服务器
-try:
-    if not is_running:
-        server = MultiMachineOperation(bind_host=config.DEFAULT_HOST, server_port=config.DEFAULT_PORT)
-        is_running = True
-        logger.info(f"内置测试服务器已在启动时开启 {config.DEFAULT_HOST}:{config.DEFAULT_PORT}")
-except Exception as e:
-    logger.error(f"启动内置测试服务器失败: {e}")
+# 注册路由
+app.include_router(server_router)
+app.include_router(machine_router)
+app.include_router(operation_router)
+app.include_router(script_router)
+app.include_router(logs_router)
 
-def ok(data: Optional[Dict[str, Any]] = None, message: Optional[str] = None) -> OperationResult:
-    return OperationResult(success=True, data=data, message=message)
 
-def err(message: str, error: Optional[str] = None, data: Optional[Dict[str, Any]] = None) -> OperationResult:
-    return OperationResult(success=False, error=error or message, message=message, data=data)
 
-def ensure_server():
-    if not (is_running and server):
-        raise HTTPException(status_code=400, detail="测试服务器未启动")
+# ==================== 事件管理端点 ====================
+
+@app.get("/api/events")
+async def get_events(limit: int = 100, event_type: Optional[str] = None):
+    """获取事件历史"""
+    global communicator
+    
+    if not communicator:
+        return {
+            "success": False,
+            "error": "服务器未运行"
+        }
+    
+    try:
+        if event_type:
+            try:
+                from communicators.test_communicator import EventType
+                event_enum = EventType(event_type)
+                events = communicator.get_event_history(limit, event_enum)
+            except ValueError:
+                return {
+                    "success": False,
+                    "error": f"无效的事件类型: {event_type}"
+                }
+        else:
+            events = communicator.get_event_history(limit)
+        
+        # 转换事件为可序列化的格式
+        events_data = []
+        for event in events:
+            events_data.append({
+                "type": event.type.value,
+                "machine_id": event.machine_id,
+                "app_name": event.app_name,
+                "timestamp": event.timestamp,
+                "data": event.data,
+                "source_machine": event.source_machine
+            })
+        
+        return {
+            "success": True,
+            "data": {"events": events_data}
+        }
+        
+    except Exception as e:
+        logger.error(f"获取事件历史失败: {e}")
+        return {
+            "success": False,
+            "error": f"获取事件历史失败: {str(e)}"
+        }
+
+# ==================== 健康检查端点 ====================
+
+@app.get("/health")
+async def health_check():
+    """健康检查"""
+    return {"status": "healthy", "timestamp": datetime.now().isoformat()}
 
 @app.get("/")
-def root():
-    return {"name": "AutoTest Backend", "mode": "server-embedded", "running": is_running}
-
-@app.get("/status")
-def status():
-    return {"connected": is_running, "host": "0.0.0.0" if is_running else None, "port": config.DEFAULT_PORT if is_running else None, "mode": "embedded"}
-
-@app.post("/connect")
-def start(req: StartServerRequest):
-    global server, is_running
-    try:
-        server = MultiMachineOperation(bind_host=config.DEFAULT_HOST, server_port=req.port)
-        is_running = True
-        return ok(message=f"内置测试服务器已启动 {config.DEFAULT_HOST}:{req.port}")
-    except Exception as e:
-        server = None
-        is_running = False
-        return err("测试服务器启动失败", str(e))
-
-@app.post("/disconnect")
-def stop():
-    global server, is_running
-    try:
-        if server:
-            server.close()
-        server = None
-        is_running = False
-        return ok(message="内置测试服务器已停止")
-    except Exception as e:
-        return err("停止失败", str(e))
-
-@app.get("/machines")
-def machines():
-    ensure_server()
-    try:
-        mids = server.get_available_machines()
-        return ok({"machines": [{"id": mid, "address": f"机器_{mid}", "status": "connected", "apps": []} for mid in mids]})
-    except Exception as e:
-        return err("获取机器列表失败", str(e))
-
-@app.post("/machines/connect")
-def connect_machine(body: Dict[str, Any]):
-    """
-    新建与待测试机器的连接（按IP/Port记录）。
-    说明：目前为占位实现，优先尝试调用 server.add_machine / connect_to_machine 等方法；
-    若不存在，则将其登记到 server.machines 字典中，前端即可展示，后续由被测端主动连入时覆盖。
-    body: { "ip": "192.168.1.2", "port": 8889, "machine_id": 可选自定义ID }
-    """
-    ensure_server()
-    try:
-        ip = str(body.get('ip', '')).strip()
-        port = int(body.get('port', 0))
-        mid = str(body.get('machine_id') or f"{ip}:{port}")
-        if not ip or not port:
-            return err("参数错误", "需要提供 ip 与 port")
-        # 如有专用方法优先使用
-        if hasattr(server, 'connect_to_machine') and callable(getattr(server, 'connect_to_machine')):
-            try:
-                getattr(server, 'connect_to_machine')(ip, port, mid)
-            except Exception as _:
-                # 回退到登记
-                pass
-        # 回退：登记占位
-        machines = getattr(server, 'machines', {})
-        if mid not in machines:
-            machines[mid] = {
-                "id": mid,
-                "address": ip,
-                "port": port,
-                "status": "connected",
-                "apps": []
-            }
-        return ok({"machines": [{"id": k, "address": v.get('address', k), "status": v.get('status', 'connected'), "apps": v.get('apps', [])} for k, v in machines.items()]}, "连接已创建")
-    except Exception as e:
-        return err("创建连接失败", str(e))
-
-@app.delete("/machines/{machine_id}")
-def disconnect_machine(machine_id: str):
-    ensure_server()
-    try:
-        # 优先使用显式方法
-        if hasattr(server, 'disconnect_machine') and callable(getattr(server, 'disconnect_machine')):
-            try:
-                getattr(server, 'disconnect_machine')(machine_id)
-                return ok(message=f"机器 {machine_id} 已断开")
-            except Exception as inner:
-                # 回退到直接关闭连接
-                pass
-        # 回退方案：直接从服务器记录中移除并尝试关闭socket
-        try:
-            machines = getattr(server, 'machines', {})
-            if machine_id in machines:
-                info = machines.pop(machine_id)
-                conn = None
-                # 常见可能字段名
-                for key in ['conn', 'socket', 'sock', 'connection']:
-                    if isinstance(info, dict) and key in info:
-                        conn = info[key]
-                        break
-                if conn:
-                    try:
-                        conn.close()
-                    except Exception:
-                        pass
-                return ok(message=f"机器 {machine_id} 已断开")
-            else:
-                return err("断开失败", f"未找到机器 {machine_id}")
-        except Exception as e2:
-            return err("断开失败", str(e2))
-    except Exception as e:
-        return err("断开失败", str(e))
-
-@app.get("/apps")
-def apps(machine_id: Optional[str] = None):
-    ensure_server()
-    try:
-        apps = server.get_available_apps(machine_id)
-        mapped = [{"id": f"{a['machine_id']}:{a['name']}", "name": a['name'], "machine_id": a['machine_id'], "status": "running", "region": a.get('region')} for a in apps]
-        return ok({"apps": mapped})
-    except Exception as e:
-        return err("获取应用列表失败", str(e))
-
-@app.post("/set-target")
-def set_target(req: MachineAppTargetRequest):
-    ensure_server()
-    try:
-        if server.set_target(req.machine_id, req.app_name):
-            global current_machine_id, current_app_name
-            current_machine_id = req.machine_id
-            current_app_name = req.app_name
-            return ok({"machine_id": req.machine_id, "app_name": req.app_name}, "设置目标成功")
-        return err("设置目标失败")
-    except Exception as e:
-        return err("设置目标失败", str(e))
-
-@app.get("/current-target")
-def current_target():
-    ensure_server()
-    return ok({"machine_id": current_machine_id, "app_name": current_app_name})
-
-@app.post("/screenshot")
-def screenshot(region: Optional[str] = None):
-    ensure_server()
-    try:
-        reg = None
-        if region:
-            parts = [int(x) for x in region.split(',')]
-            if len(parts) != 4:
-                return err("区域参数格式错误，应为 x,y,width,height")
-            reg = parts
-        res = server.get_screenshot(reg)
-        return OperationResult(**res)
-    except Exception as e:
-        return err("获取截图失败", str(e))
-
-@app.post("/click-element")
-def click_element(req: ElementOperationRequest):
-    ensure_server()
-    try:
-        cmds = server.click_element(req.path, req.roles)
-        return ok({"commands": cmds}, "元素点击成功")
-    except Exception as e:
-        return err("元素点击失败", str(e))
-
-@app.post("/click-image")
-def click_image(req: ImageOperationRequest):
-    ensure_server()
-    try:
-        res = server.click_image(req.imagePath, req.threshold)
-        return OperationResult(**res)
-    except Exception as e:
-        return err("图片点击失败", str(e))
-
-@app.post("/drag-to")
-def drag_to(req: DragRequest):
-    ensure_server()
-    try:
-        cmds = server.drag_to(req.startX, req.startY, req.endX, req.endY) if hasattr(server, 'drag_to') else []
-        return ok({"commands": cmds}, "拖拽操作成功")
-    except Exception as e:
-        return err("拖拽操作失败", str(e))
-
-@app.post("/input-text")
-def input_text(req: TextInputRequest):
-    ensure_server()
-    try:
-        cmds = server.input_text(req.elementPath, req.text) if hasattr(server, 'input_text') else []
-        return ok({"commands": cmds}, "文本输入成功")
-    except Exception as e:
-        return err("文本输入失败", str(e))
-
-@app.post("/hotkey")
-def hotkey(req: HotkeyRequest):
-    ensure_server()
-    try:
-        res = server.hotkey(req.keys)
-        return OperationResult(**res)
-    except Exception as e:
-        return err("快捷键操作失败", str(e))
-
-# 脚本管理（使用JSON文件持久化存储）
-@app.get("/scripts")
-def get_scripts():
-    try:
-        scripts = script_manager.get_all_scripts()
-        return ok(scripts)
-    except Exception as e:
-        logger.error(f"获取脚本列表失败: {e}")
-        return err("获取脚本列表失败", str(e))
-
-@app.get("/scripts/{script_id}")
-def get_script(script_id: str):
-    try:
-        script = script_manager.get_script(script_id)
-        if not script:
-            raise HTTPException(status_code=404, detail="脚本不存在")
-        return ok(script)
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"获取脚本失败: {e}")
-        return err("获取脚本失败", str(e))
-
-@app.post("/scripts")
-def create_script(req: CreateScriptRequest):
-    try:
-        script = script_manager.create_script(req)
-        return ok(script, "脚本创建成功")
-    except ValueError as e:
-        return err("脚本创建失败", str(e))
-    except Exception as e:
-        logger.error(f"创建脚本失败: {e}")
-        return err("脚本创建失败", str(e))
-
-@app.put("/scripts/{script_id}")
-def update_script(script_id: str, req: UpdateScriptRequest):
-    try:
-        script = script_manager.update_script(script_id, req)
-        if not script:
-            raise HTTPException(status_code=404, detail="脚本不存在")
-        return ok(script, "脚本更新成功")
-    except ValueError as e:
-        return err("脚本更新失败", str(e))
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"更新脚本失败: {e}")
-        return err("脚本更新失败", str(e))
-
-@app.delete("/scripts/{script_id}")
-def delete_script(script_id: str):
-    try:
-        if not script_manager.delete_script(script_id):
-            raise HTTPException(status_code=404, detail="脚本不存在")
-        return ok(message="脚本删除成功")
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"删除脚本失败: {e}")
-        return err("脚本删除失败", str(e))
-
-@app.post("/scripts/{script_id}/run")
-def run_script(script_id: str):
-    try:
-        script = script_manager.get_script(script_id)
-        if not script:
-            raise HTTPException(status_code=404, detail="脚本不存在")
-        
-        # 更新脚本状态为运行中
-        script_manager.update_script_status(script_id, "running")
-        
-        start = time.time()
-        try:
-            import subprocess, tempfile
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
-                f.write(script.content)
-                tmp = f.name
-            
-            result = subprocess.run([sys.executable, tmp], capture_output=True, text=True, timeout=config.SCRIPT_TIMEOUT)
-            os.unlink(tmp)
-            
-            # 更新脚本状态和运行信息
-            success = result.returncode == 0
-            status = "completed" if success else "failed"
-            run_count = script.runCount + 1
-            last_run_time = datetime.now().isoformat()
-            
-            script_manager.update_script_status(script_id, status, run_count, last_run_time)
-            
-            execution_time = int((time.time() - start) * 1000)
-            
-            return ok({
-                "success": success,
-                "output": result.stdout,
-                "error": result.stderr if result.returncode != 0 else None,
-                "executionTime": execution_time
-            }, "脚本运行完成")
-            
-        except subprocess.TimeoutExpired:
-            script_manager.update_script_status(script_id, "failed")
-            return err("脚本执行超时")
-        except Exception as e:
-            script_manager.update_script_status(script_id, "failed")
-            return err("脚本运行失败", str(e))
-            
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"运行脚本失败: {e}")
-        return err("脚本运行失败", str(e))
-
-@app.post("/scripts/import")
-def import_script(file: UploadFile = File(...)):
-    try:
-        if not file.filename.endswith('.py'):
-            raise HTTPException(status_code=400, detail="只能导入.py文件")
-        
-        content = file.file.read().decode('utf-8')
-        name = file.filename[:-3]
-        
-        # 创建导入请求
-        req = CreateScriptRequest(
-            name=name,
-            description=f"从文件 {file.filename} 导入",
-            content=content
-        )
-        
-        script = script_manager.create_script(req)
-        return ok(script, "脚本导入成功")
-        
-    except ValueError as e:
-        return err("脚本导入失败", str(e))
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"导入脚本失败: {e}")
-        return err("脚本导入失败", str(e))
-
-@app.get("/scripts/{script_id}/export")
-def export_script(script_id: str):
-    try:
-        script = script_manager.get_script(script_id)
-        if not script:
-            raise HTTPException(status_code=404, detail="脚本不存在")
-        
-        return Response(
-            content=script.content, 
-            media_type="text/plain", 
-            headers={"Content-Disposition": f"attachment; filename={script.name}.py"}
-        )
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"导出脚本失败: {e}")
-        raise HTTPException(status_code=500, detail=f"导出脚本失败: {str(e)}")
-
-@app.post("/scripts/backup")
-def backup_scripts():
-    """备份脚本数据"""
-    try:
-        backup_dir = os.path.join(os.path.dirname(SCRIPT_STORAGE_FILE), "backup")
-        script_manager.backup_data(backup_dir)
-        return ok(message="脚本数据备份成功")
-    except Exception as e:
-        logger.error(f"备份脚本数据失败: {e}")
-        return err("备份脚本数据失败", str(e))
+async def root():
+    """根路径"""
+    return {
+        "message": "自动化测试系统后端API",
+        "version": "1.0.0",
+        "docs": "/docs"
+    }
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("backend.app:app", host="0.0.0.0", port=8080, reload=True)
+    uvicorn.run(app, host="0.0.0.0", port=8080)
 

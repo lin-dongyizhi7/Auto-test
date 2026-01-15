@@ -1,0 +1,41 @@
+{
+  "counter": 3,
+  "storage": [
+    {
+      "id": "script_1",
+      "name": "calculator_demo",
+      "description": "基于 test_calculator 的按键脚本",
+      "path": "d:/A-master/Auto-test/backend/data/scripts_store/script_1.json",
+      "createdAt": "2025-09-02T00:00:00.000Z",
+      "updatedAt": "2025-09-02T00:00:00.000Z",
+      "lastRunTime": "2025-09-09T16:11:29.755980",
+      "runCount": 4,
+      "target_app_name": "calculator",
+      "last_run_machine_id": null
+    },
+    {
+      "id": "script_2",
+      "name": "sample_python_script_converted",
+      "description": "从Python脚本转换: sample_python_script.py",
+      "path": "D:\\A-master\\Auto-test\\backend\\data\\scripts_store\\script_2.json",
+      "createdAt": "2025-09-16T15:42:31.741023",
+      "updatedAt": "2025-09-16T15:42:31.741023",
+      "lastRunTime": "2025-09-25T19:56:24.984654",
+      "runCount": 10,
+      "target_app_name": "calculator",
+      "last_run_machine_id": null
+    },
+    {
+      "id": "script_3",
+      "name": "python_script_converted",
+      "description": "从Python脚本转换: sample_python_script.py",
+      "path": "D:\\A-master\\Auto-test\\backend\\data\\scripts_store\\script_3.json",
+      "createdAt": "2025-09-27T16:11:32.373265",
+      "updatedAt": "2025-09-27T16:11:32.373265",
+      "lastRunTime": "2025-09-27T16:11:48.337366",
+      "runCount": 1,
+      "target_app_name": "calculator",
+      "last_run_machine_id": null
+    }
+  ]
+}

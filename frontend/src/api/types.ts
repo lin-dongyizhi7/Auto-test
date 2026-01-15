@@ -13,26 +13,47 @@ export interface TestServerConnection {
 }
 
 export interface ConnectionStatus {
-  connected: boolean;
-  host?: string;
-  port?: number;
-  mode?: string; // 'embedded' 表示服务端内置测试服务器模式
+  is_running: boolean;
+  current_machine_id?: string;
+  current_app_name?: string;
+  connection_summary?: {
+    machines: {
+      total: number;
+      connected: number;
+      disconnected: number;
+    };
+    apps: {
+      total: number;
+      running: number;
+    };
+    events: {
+      total: number;
+      subscribers: number;
+    };
+  };
 }
 
 // 多机器多应用类型
 export interface MachineInfo {
-  id: string;
-  address: string;
+  machine_id: string;
   status: string;
+  address: string | [string, number];
+  info: any;
+  connected_at: number;
+  last_seen: number;
+  apps_count: number;
   apps: string[];
 }
 
 export interface AppInfo {
-  id: string;
-  name: string;
+  app_id: string;
   machine_id: string;
+  app_name: string;
   status: string;
-  region?: number[];
+  info: any;
+  registered_at: number;
+  machine_status: string;
+  machine_address: string | [string, number];
 }
 
 export interface MachineAppTarget {
@@ -95,18 +116,16 @@ export interface ScriptInfo {
   content: string;
   createdAt: string;
   updatedAt: string;
-  status: string;
   lastRunTime?: string;
   runCount: number;
-  target_machine_id?: string;
   target_app_name?: string;
+  last_run_machine_id?: string;
 }
 
 export interface CreateScriptRequest {
   name: string;
   description?: string;
   content: string;
-  target_machine_id?: string;
   target_app_name?: string;
 }
 
@@ -114,7 +133,6 @@ export interface UpdateScriptRequest {
   name?: string;
   description?: string;
   content?: string;
-  target_machine_id?: string;
   target_app_name?: string;
 }
 
@@ -125,10 +143,43 @@ export interface ScriptRunResult {
   executionTime: number;
 }
 
+// Python脚本相关类型
+export interface PythonScriptRunRequest {
+  script_content: string;
+  target_machine_ip?: string;
+  target_app_name?: string;
+}
+
+export interface PythonScriptRunResult {
+  success: boolean;
+  data?: any;
+  output?: string;
+  error?: string;
+  message?: string;
+}
+
+export interface PythonScriptConvertRequest {
+  script_content: string;
+  script_name: string;
+  description?: string;
+  target_machine_ip?: string;
+  target_app_name?: string;
+}
+
 // 操作结果类型
 export interface OperationResult {
   success: boolean;
   data?: any;
   error?: string;
   message?: string;
+}
+
+// 事件类型
+export interface EventInfo {
+  type: string;
+  machine_id: string;
+  app_name?: string;
+  timestamp: number;
+  data: any;
+  source_machine: string;
 } 

@@ -56,38 +56,71 @@
       </el-col>
     </el-row>
 
-    <!-- 机器列表（新的卡片） -->
+    <!-- 机器列表 -->
     <el-card class="machines-overview-card" shadow="hover">
       <template #header>
         <div class="card-header">
-          <span>已连接的机器</span>
+          <span>机器列表</span>
           <div class="actions">
             <el-button type="primary" size="small" @click="openCreateConnection">新建连接</el-button>
+            <el-button type="success" size="small" @click="openAddMachine">添加机器</el-button>
+            <el-button type="danger" size="small" :disabled="selectedIds.length===0" @click="confirmBatchDelete">批量删除</el-button>
           </div>
         </div>
       </template>
 
-      <div v-if="machines.length === 0" class="no-machines">
-        <el-empty description="暂无可用机器" />
+      <div v-if="machineInfoList.length === 0" class="no-machines">
+        <el-empty description="暂无机器信息" />
       </div>
 
       <el-row v-else :gutter="16">
-        <el-col v-for="m in machines" :key="m.id" :span="8">
+        <el-col v-for="m in machineInfoList" :key="m.id" :span="8">
           <el-card class="machine-card" shadow="hover">
-            <div class="machine-row" @click="$router.push(`/machine/${m.id}`)">
-              <el-tag :type="m.status === 'connected' ? 'success' : 'danger'" size="small">{{ m.status }}</el-tag>
-              <span class="machine-name">{{ m.address }}</span>
+            <div class="machine-header">
+              <div
+                class="machine-row"
+                :class="{ clickable: m.status === 'connected' }"
+                @click="handleCardClick(m)"
+              >
+                <el-tag :type="m.status === 'connected' ? 'success' : m.status === 'error' ? 'danger' : 'info'" size="small">
+                  {{ m.status === 'connected' ? '已连接' : m.status === 'error' ? '连接错误' : '未连接' }}
+                </el-tag>
+                <span class="machine-name">{{ m.name }}</span>
+              </div>
+              <div class="machine-actions">
+                <el-checkbox v-model="selectionMap[m.id]" :disabled="m.status==='connected'" title="选择用于批量删除" />
+                <el-button 
+                  v-if="m.status !== 'connected'"
+                  type="success" 
+                  size="small" 
+                  :icon="Connection" 
+                  circle 
+                  @click.stop="handleConnectMachine(m.id)"
+                  :loading="connectingMachine === m.id"
+                  title="连接"
+                />
+                <el-button 
+                  v-else
+                  type="danger" 
+                  size="small" 
+                  :icon="Close" 
+                  circle 
+                  @click.stop="handleDisconnectMachine(m.id)"
+                  :loading="disconnectingMachine === m.id"
+                  title="断开连接"
+                />
+              </div>
             </div>
             <div class="machine-meta">
-              <span>应用数：{{ m.apps?.length || 0 }}</span>
+              <span>地址：{{ m.host }}:{{ m.port }}</span>
               <span>ID：{{ m.id }}</span>
+              <span>应用数：{{ m.apps_count || 0 }}</span>
             </div>
-            <div class="machine-actions">
-              <el-popconfirm title="确定断开该机器连接？" @confirm="handleDisconnectMachine(m.id)">
-                <template #reference>
-                  <el-button type="danger" size="small">断开连接</el-button>
-                </template>
-              </el-popconfirm>
+            <div class="machine-info">
+              <span v-if="m.description">描述：{{ m.description }}</span>
+              <span v-if="m.connected_at">连接时间：{{ new Date(m.connected_at * 1000).toLocaleString() }}</span>
+              <span v-if="m.last_connected_at">最后连接：{{ new Date(m.last_connected_at).toLocaleString() }}</span>
+              <span v-if="m.connection_count">连接次数：{{ m.connection_count }}</span>
             </div>
           </el-card>
         </el-col>
@@ -102,10 +135,6 @@
             <span>快速操作</span>
           </template>
           <div class="quick-actions">
-            <el-button type="primary" size="large" @click="handleQuickConnect" :disabled="isConnected">
-              <el-icon><Connection /></el-icon>
-              快速连接
-            </el-button>
             <el-button type="success" size="large" @click="handleTakeScreenshot" :disabled="!isTargetSet">
               <el-icon><Camera /></el-icon>
               截图
@@ -113,6 +142,10 @@
             <el-button type="warning" size="large" @click="handleRefreshStatus">
               <el-icon><Refresh /></el-icon>
               刷新状态
+            </el-button>
+            <el-button type="danger" size="large" @click="handleStopServer" :disabled="!isConnected">
+              <el-icon><Close /></el-icon>
+              停止服务器
             </el-button>
           </div>
         </el-card>
@@ -159,18 +192,40 @@
     </el-card>
 
     <!-- 新建连接对话框 -->
-    <el-dialog v-model="createDialogVisible" title="新建连接" width="420px">
-      <el-form label-width="80px">
-        <el-form-item label="IP">
-          <el-input v-model="createIp" placeholder="例如 192.168.1.100" />
+    <el-dialog v-model="connectionDialogVisible" title="新建连接" width="420px">
+      <el-form label-width="100px">
+        <el-form-item label="目标机器IP" required>
+          <el-input v-model="targetMachineIP" placeholder="192.168.1.100" />
         </el-form-item>
-        <el-form-item label="端口">
-          <el-input v-model.number="createPort" type="number" placeholder="8889" />
+        <el-form-item label="目标机器端口">
+          <el-input v-model.number="targetMachinePort" type="number" placeholder="8888" />
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="createDialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="creating" @click="createConnection">连接</el-button>
+        <el-button @click="connectionDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="connecting" @click="createConnection">连接</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 添加机器对话框 -->
+    <el-dialog v-model="addMachineDialogVisible" title="添加机器" width="420px">
+      <el-form label-width="100px">
+        <el-form-item label="机器名称" required>
+          <el-input v-model="newMachineName" placeholder="测试机器1" />
+        </el-form-item>
+        <el-form-item label="主机地址" required>
+          <el-input v-model="newMachineHost" placeholder="192.168.1.100" />
+        </el-form-item>
+        <el-form-item label="端口">
+          <el-input v-model.number="newMachinePort" type="number" placeholder="8888" />
+        </el-form-item>
+        <el-form-item label="描述">
+          <el-input v-model="newMachineDescription" type="textarea" placeholder="机器描述信息" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="addMachineDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="addingMachine" @click="addMachine">添加</el-button>
       </template>
     </el-dialog>
   </div>
@@ -178,21 +233,36 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { ElMessage } from 'element-plus'
+import { useRouter } from 'vue-router'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { Close, Connection } from '@element-plus/icons-vue'
 import { useOperationStore } from '@/stores/operation'
-import { connectMachine, disconnectMachine } from '@/api/operation'
+// 移除不再需要的导入，因为机器连接管理已移至后端
 
 const operationStore = useOperationStore()
+const router = useRouter()
 
 // 响应式数据
 const uptime = ref('00:00:00')
 const startTime = ref(Date.now())
 
 // 新建连接对话框
-const createDialogVisible = ref(false)
-const createIp = ref('')
-const createPort = ref(8889)
-const creating = ref(false)
+const connectionDialogVisible = ref(false)
+const targetMachineIP = ref('')
+const targetMachinePort = ref(8888)
+const connecting = ref(false)
+
+// 断开连接状态
+const disconnectingMachine = ref<string | null>(null)
+const connectingMachine = ref<string | null>(null)
+
+// 添加机器对话框
+const addMachineDialogVisible = ref(false)
+const newMachineName = ref('')
+const newMachineHost = ref('')
+const newMachinePort = ref(8888)
+const newMachineDescription = ref('')
+const addingMachine = ref(false)
 
 // 计算属性
 const isConnected = computed(() => operationStore.isConnected)
@@ -200,11 +270,13 @@ const isTargetSet = computed(() => operationStore.isTargetSet)
 const machines = computed(() => operationStore.machines)
 const apps = computed(() => operationStore.apps)
 const operationLogs = computed(() => operationStore.operationLogs)
+const machineInfoList = computed(() => operationStore.machineInfoList)
+const selectionMap = ref<Record<string, boolean>>({})
+const selectedIds = computed(() => Object.keys(selectionMap.value).filter(id => selectionMap.value[id]))
 
 const testServerInfo = computed(() => {
-  if (!isConnected.value) return '未连接'
-  const config = operationStore.connectionConfig
-  return `${config.host}:${config.port}`
+  if (!isConnected.value) return '未启动'
+  return 'localhost:8888 (默认启动)'
 })
 
 const currentTargetInfo = computed(() => {
@@ -226,51 +298,65 @@ const lastOperationTime = computed(() => {
 })
 
 // 方法
-const openCreateConnection = () => { createDialogVisible.value = true }
-
-const createConnection = async () => {
-  if (!createIp.value || !createPort.value) {
-    ElMessage.warning('请填写 IP 和端口')
+const openCreateConnection = () => { 
+  if (!isConnected.value) {
+    ElMessage.warning('测试服务器未启动，请稍后再试')
     return
   }
-  creating.value = true
-  try {
-    const res = await connectMachine(createIp.value.trim(), createPort.value)
-    if (res.success) {
-      ElMessage.success('连接已创建')
-      createDialogVisible.value = false
-      await operationStore.refreshMachines()
-    } else {
-      ElMessage.error(res.message || '连接失败')
-    }
-  } catch (e) {
-    ElMessage.error('连接失败')
-  } finally {
-    creating.value = false
-  }
+  connectionDialogVisible.value = true 
 }
 
-const handleDisconnectMachine = async (machineId: string) => {
-  try {
-    const res = await disconnectMachine(machineId)
-    if (res.success) {
-      ElMessage.success('已断开')
-      await operationStore.refreshMachines()
-    } else {
-      ElMessage.error(res.message || '断开失败')
-    }
-  } catch (e) {
-    ElMessage.error('断开失败')
+const createConnection = async () => {
+  if (!targetMachineIP.value) {
+    ElMessage.warning('请输入目标机器IP')
+    return
   }
-}
-
-const handleQuickConnect = async () => {
+  
+  connecting.value = true
   try {
-    const success = await operationStore.startServer(8889)
-    if (success) ElMessage.success('测试服务器已启动')
-    else ElMessage.error('启动测试服务器失败')
+    // 首先添加机器信息
+    const machineName = `机器_${targetMachineIP.value.replace(/\./g, '_')}`
+    const addSuccess = await operationStore.addNewMachineInfo(
+      machineName,
+      targetMachineIP.value,
+      targetMachinePort.value,
+      '通过新建连接添加的机器'
+    )
+    
+    if (addSuccess) {
+      ElMessage.success(`机器信息已添加: ${machineName}`)
+      const success = await operationStore.connectToTargetMachine(
+        targetMachineIP.value,
+        targetMachinePort.value
+      )
+      if (success) {
+        ElMessage.success(`成功连接到目标机器 ${targetMachineIP.value}:${targetMachinePort.value}`)
+      } else {
+        ElMessage.error(`连接失败`)
+      }
+      connectionDialogVisible.value = false
+      // 清空输入
+      targetMachineIP.value = ''
+      targetMachinePort.value = 8888
+    } else {
+      ElMessage.error('添加机器信息失败')
+    }
   } catch (error) {
-    ElMessage.error(`启动失败: ${error instanceof Error ? error.message : '未知错误'}`)
+    ElMessage.error(`添加失败: ${error instanceof Error ? error.message : '未知错误'}`)
+  } finally {
+    connecting.value = false
+  }
+}
+
+
+
+const handleStopServer = async () => {
+  try {
+    const success = await operationStore.stopTestServer()
+    if (success) ElMessage.success('测试服务器已停止')
+    else ElMessage.error('停止测试服务器失败')
+  } catch (error) {
+    ElMessage.error(`停止失败: ${error instanceof Error ? error.message : '未知错误'}`)
   }
 }
 
@@ -286,7 +372,7 @@ const handleTakeScreenshot = async () => {
 
 const handleRefreshStatus = async () => {
   try {
-    await operationStore.refreshConnectionStatus()
+    await operationStore.refreshServerStatus()
     if (isConnected.value) {
       await operationStore.refreshMachines()
       await operationStore.refreshCurrentTarget()
@@ -297,13 +383,132 @@ const handleRefreshStatus = async () => {
   }
 }
 
+const handleConnectMachine = async (machineId: string) => {
+  try {
+    connectingMachine.value = machineId
+    const success = await operationStore.connectToTargetMachineById(machineId)
+    
+    if (success) {
+      ElMessage.success(`成功连接到机器 ${machineId}`)
+    } else {
+      ElMessage.error(`连接失败`)
+    }
+  } catch (error) {
+    ElMessage.error(`连接失败: ${error instanceof Error ? error.message : '未知错误'}`)
+  } finally {
+    connectingMachine.value = null
+  }
+}
+
+const handleDisconnectMachine = async (machineId: string) => {
+  try {
+    await ElMessageBox.confirm(
+      `确定要断开与机器 ${machineId} 的连接吗？`,
+      '确认断开连接',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning',
+      }
+    )
+    
+    disconnectingMachine.value = machineId
+    const success = await operationStore.disconnectTargetMachine(machineId)
+    
+    if (success) {
+      ElMessage.success(`已断开与机器 ${machineId} 的连接`)
+    } else {
+      ElMessage.error(`断开连接失败`)
+    }
+  } catch (error) {
+    if (error !== 'cancel') {
+      ElMessage.error(`断开连接失败: ${error instanceof Error ? error.message : '未知错误'}`)
+    }
+  } finally {
+    disconnectingMachine.value = null
+  }
+}
+
+const handleCardClick = (m: any) => {
+  if (m.status === 'connected') {
+    // 仅连接状态允许跳转
+    // 使用路由实例
+    router.push({ name: 'Operation', query: { machine: m.id } })
+  }
+}
+
+const openAddMachine = () => {
+  newMachineName.value = ''
+  newMachineHost.value = ''
+  newMachinePort.value = 8888
+  newMachineDescription.value = ''
+  addMachineDialogVisible.value = true
+}
+
+const addMachine = async () => {
+  if (!newMachineName.value || !newMachineHost.value) {
+    ElMessage.warning('请输入机器名称和主机地址')
+    return
+  }
+  
+  addingMachine.value = true
+  try {
+    const success = await operationStore.addNewMachineInfo(
+      newMachineName.value,
+      newMachineHost.value,
+      newMachinePort.value,
+      newMachineDescription.value
+    )
+    
+    if (success) {
+      ElMessage.success('机器信息添加成功')
+      addMachineDialogVisible.value = false
+      // 清空输入
+      newMachineName.value = ''
+      newMachineHost.value = ''
+      newMachinePort.value = 8888
+      newMachineDescription.value = ''
+    } else {
+      ElMessage.error('添加机器信息失败')
+    }
+  } catch (error) {
+    ElMessage.error(`添加失败: ${error instanceof Error ? error.message : '未知错误'}`)
+  } finally {
+    addingMachine.value = false
+  }
+}
+
+const confirmBatchDelete = async () => {
+  if (selectedIds.value.length === 0) return
+  try {
+    await ElMessageBox.confirm(
+      `确定删除选中的 ${selectedIds.value.length} 台未连接机器？此操作不可恢复。`,
+      '确认批量删除',
+      { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' }
+    )
+    const ok = await operationStore.batchDeleteMachineInfoData(selectedIds.value)
+    if (ok) {
+      ElMessage.success('批量删除完成')
+      // 清空选择
+      selectionMap.value = {}
+      // 刷新
+      await operationStore.refreshMachineInfo()
+    } else {
+      ElMessage.error('批量删除失败')
+    }
+  } catch (e) {
+    if (e !== 'cancel') ElMessage.error('操作失败')
+  }
+}
+
 const updateUptime = () => {
   const now = Date.now()
   const diff = now - startTime.value
   const hours = Math.floor(diff / (1000 * 60 * 60))
   const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
   const seconds = Math.floor((diff % (1000 * 60)) / 1000)
-  uptime.value = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
+  const pad = (num: number) => String(num).padStart(2, '0')
+  uptime.value = `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`
 }
 
 // 生命周期
@@ -311,6 +516,9 @@ onMounted(async () => {
   setInterval(updateUptime, 1000)
   await operationStore.initialize()
   await operationStore.refreshMachines().catch(() => {})
+  await operationStore.refreshMachineInfo().catch(() => {})
+  // 初始化选择映射，确保仅允许未连接的可选
+  selectionMap.value = Object.fromEntries((operationStore.machineInfoList || []).map((m: any) => [m.id, false]))
 })
 </script>
 
@@ -318,11 +526,59 @@ onMounted(async () => {
 .dashboard-page {
   .stats-row { margin-bottom: 20px; }
   .machines-overview-card { margin-bottom: 20px; }
-  .machine-card { cursor: pointer; }
-  .machine-row { display: flex; align-items: center; gap: 10px; }
-  .machine-name { font-weight: 600; }
-  .machine-meta { margin-top: 8px; color: #909399; display: flex; justify-content: space-between; }
-  .machine-actions { margin-top: 10px; text-align: right; }
+  .machine-card { 
+    cursor: pointer; 
+    width: 320px;
+    transition: all 0.3s ease;
+    
+    &:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    }
+  }
+  
+  .machine-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+  }
+  
+  .machine-actions {
+    display: flex;
+    gap: 4px;
+  }
+  
+  .machine-row { 
+    display: flex; 
+    align-items: center; 
+    gap: 10px; 
+    flex: 1;
+    cursor: default;
+  }
+  .machine-row.clickable { cursor: pointer; }
+  
+  .machine-name { 
+    font-weight: 600; 
+    color: #303133;
+  }
+  
+  .machine-meta { 
+    margin-top: 8px; 
+    color: #909399; 
+    display: flex; 
+    justify-content: space-between; 
+    font-size: 13px;
+  }
+  
+  .machine-info { 
+    margin-top: 8px; 
+    color: #909399; 
+    font-size: 12px; 
+    display: flex; 
+    flex-direction: column; 
+    gap: 4px; 
+  }
 }
 
 .card-header {

@@ -2,33 +2,15 @@
 
 ## 项目概述
 
-这是一个支持多机器多应用连接的自动化测试系统，包含前端图形化界面和后端API服务。系统通过前端页面进行图形化操作和配置，后端接收API请求并调用 `operation_multi_machine.py` 中的函数与测试服务器建立连接，支持同时管理多台被测试机器和多个应用程序的自动化操作。
+这是一个支持多机器多应用连接的自动化测试系统，包含前端图形化界面和后端 API 服务。后端基于 FastAPI，默认在进程内启动并管理“内置测试服务器”（基于 `communicators.test_communicator`），前端通过 HTTP API 调用后端执行元素操作、图片识别、键鼠输入、脚本管理等能力。
 
 ## 系统架构
 
 ```
-┌─────────────────┐    HTTP API    ┌─────────────────┐    TCP Socket    ┌─────────────────┐
-│   前端界面      │ ──────────────→ │   后端API服务   │ ──────────────→ │   测试服务器    │
-│   (Vue3)        │                │   (FastAPI)     │                │   (8889端口)    │
-└─────────────────┘                └─────────────────┘                └─────────────────┘
-                                                                              │
-                                                                              ▼
-                                                                      ┌─────────────────┐
-                                                                      │   被测试机器1    │
-                                                                      │   (8888端口)    │
-                                                                      └─────────────────┘
-                                                                              │
-                                                                              ▼
-                                                                      ┌─────────────────┐
-                                                                      │   被测试机器2    │
-                                                                      │   (8888端口)    │
-                                                                      └─────────────────┘
-                                                                              │
-                                                                              ▼
-                                                                      ┌─────────────────┐
-                                                                      │   被测试机器N    │
-                                                                      │   (8888端口)    │
-                                                                      └─────────────────┘
+┌─────────────────┐   HTTP API    ┌──────────────────────┐   内置测试服务器   ┌─────────────────┐
+│   前端界面      │ ────────────→ │   后端 API (FastAPI) │ ─────────────────→ │  被测试机器们   │
+│   (Vue3)        │               │   端口: 8080         │                   │  客户端端口:8888 │
+└─────────────────┘               └──────────────────────┘                   └─────────────────┘
 ```
 
 ### 技术栈
@@ -36,125 +18,82 @@
 - **前端**: Vue 3 + TypeScript + Element Plus + Pinia + Vue Router
 - **后端**: Python + FastAPI + Uvicorn
 - **自动化**: Dogtail (Linux) + PyAutoGUI (跨平台)
-- **通信**: HTTP API + TCP Socket (多机器多应用)
-- **测试服务器**: 多机器连接管理和事件同步
+- **通信**: HTTP API（前端⇄后端）+ TCP Socket（后端内置测试服务器⇄被测机）
 
 ## 项目结构
 
 ```
 Auto-test/
-├── frontend/                    # 前端项目
+├── frontend/                     # 前端项目
 │   ├── src/
-│   │   ├── views/              # 页面组件
-│   │   │   └── Operation.vue   # 多机器多应用操作界面
-│   │   ├── stores/             # 状态管理
-│   │   │   └── operation.ts    # 多机器多应用状态管理
-│   │   ├── api/                # API接口
-│   │   │   ├── types.ts        # 多机器多应用类型定义
-│   │   │   └── operation.ts    # 多机器多应用API调用
-│   │   ├── utils/              # 工具函数
-│   │   └── assets/             # 静态资源
+│   │   ├── views/
+│   │   ├── stores/
+│   │   ├── api/
+│   │   ├── utils/
+│   │   └── assets/
 │   ├── package.json
 │   ├── vite.config.ts
 │   └── README.md
-├── backend/                     # 后端项目
-│   ├── main.py                 # 多机器多应用主应用文件
-│   ├── requirements.txt        # Python依赖
-│   ├── test_api.py             # API测试脚本
-│   ├── start.bat               # Windows启动脚本
-│   ├── start.sh                # Linux/Mac启动脚本
-│   └── README.md
-├── communicators/               # 通信模块
-│   ├── operation_multi_machine.py  # 多机器多应用操作封装
-│   ├── test_communicator.py        # 测试服务器通信
-│   ├── tested_communicator.py      # 被测试机器通信
-│   ├── operation.py                # 单机器操作封装（兼容）
-│   └── design_document.md          # 设计文档
-├── qgis-auto-test/             # QGIS测试示例
-│   ├── test_01_project.py      # 项目测试
-│   └── data/                   # 测试数据
-└── README.md                   # 项目说明
+├── backend/                      # 后端项目
+│   ├── app.py                    # FastAPI 应用入口（内置测试服务器）
+│   ├── config.py                 # 配置
+│   ├── requirements.txt          # Python 依赖
+│   ├── start.bat / start.sh      # 启动脚本
+│   ├── scripts_storage.json      # 脚本存储（JSON）
+│   └── script_counter.json       # 脚本计数器
+├── communicators/                # 通信与多机操作
+│   ├── test_communicator.py      # 测试服务器实现（也被后端内置使用）
+│   ├── tested_communicator.py    # 被测机客户端（连接到测试服务器）
+│   ├── operation_multi_machine.py# 多机器/应用操作封装
+│   └── operation.py              # 单机操作封装（兼容）
+└── README.md
 ```
 
 ## 快速开始
 
-### 1. 环境准备
+### 1) 环境准备
 
-#### 前端环境
+- 前端: Node.js 16+，npm
+- 后端: Python 3.8+，pip
 
-- Node.js 16+
-- npm 或 yarn
-
-#### 后端环境
-
-- Python 3.8+
-- pip
-
-### 2. 启动测试服务器
+### 2) 启动后端服务（包含内置测试服务器）
 
 ```bash
-# 进入通信模块目录
-cd communicators
-
-# 启动测试服务器（监听8889端口）
-python test_communicator.py
-```
-
-### 3. 启动被测试机器服务
-
-```bash
-# 在每台被测试机器上运行
-cd communicators
-
-# 启动被测试机器服务（监听8888端口）
-python tested_communicator.py --machine-id machine_001 --test-server 192.168.1.100:8889
-```
-
-### 4. 启动后端服务
-
-```bash
-# 进入后端目录
 cd backend
-
-# Windows用户
+# Windows
 start.bat
-
-# Linux/Mac用户
-chmod +x start.sh
-./start.sh
-
-# 或手动启动
+# Linux / macOS
+chmod +x start.sh && ./start.sh
+# 或手动
 pip install -r requirements.txt
-python main.py
+python -m uvicorn app:app --host 0.0.0.0 --port 8080
 ```
 
-后端服务将在 http://localhost:8080 启动
+默认启动后，后端会在启动事件中尝试开启内置测试服务器，监听端口 8888。
 
-### 5. 启动前端服务
+### 3) 在每台被测机上启动客户端
 
 ```bash
-# 进入前端目录
+cd communicators
+python tested_communicator.py --machine-id machine_001 --test-server <后端IP>:8888
+```
+
+将 `<后端IP>` 替换为运行后端的机器 IP。每台被测机使用不同 `--machine-id`。
+
+### 4) 启动前端
+
+```bash
 cd frontend
-
-# Windows用户
-start.bat
-
-# Linux/Mac用户
-chmod +x start.sh
-./start.sh
-
-# 或手动启动
 npm install
 npm run dev
 ```
 
-前端服务将在 http://localhost:3000 启动
+访问前端: http://localhost:3000
 
-### 6. 访问系统
+### 5) API 文档
 
-- **前端界面**: http://localhost:3000
-- **后端API**: http://localhost:8080
-- **API文档**: http://localhost:8080/docs
+- 后端根地址: http://localhost:8080
+- Swagger 文档: http://localhost:8080/docs
 
 ## 功能特性
 
@@ -184,12 +123,12 @@ npm run dev
 
 ### 后端功能
 
-- **多机器连接管理**: 通过测试服务器管理多台机器
+- **内置测试服务器**: 后端进程内启动测试服务器
+- **多机器连接管理**: 管理已连接的被测机与应用
 - **多应用支持**: 支持每台机器上的多个应用程序
-- **操作执行**: 调用operation_multi_machine.py中的自动化操作
-- **API接口**: 完整的RESTful API服务
-- **错误处理**: 统一的错误处理和响应
-- **日志记录**: 详细的操作日志
+- **操作执行**: 基于 `operation_multi_machine.py` 的自动化操作
+- **脚本管理**: JSON 持久化的脚本增删改查与运行标记
+- **REST API**: 标准化的 API 端点与统一错误处理
 
 ### 自动化操作
 
@@ -200,47 +139,33 @@ npm run dev
 - **窗口操作**: 窗口管理、截图
 - **多机器协调**: 跨机器的操作协调和同步
 
-## API接口
+## API 接口（后端主要端点）
 
-### 连接管理
+以下为 `backend/app.py` 已实现的关键端点（更多细节见 Swagger 文档）：
 
-- `POST /connect` - 连接到测试服务器
-- `POST /disconnect` - 断开连接
-- `GET /status` - 获取连接状态
-
-### 多机器多应用管理
-
-- `GET /machines` - 获取可用机器列表
-- `GET /apps` - 获取可用应用列表
-- `POST /set-target` - 设置当前操作目标机器和应用
-- `GET /current-target` - 获取当前操作目标
-- `POST /screenshot` - 获取当前目标应用的截图
-
-### 元素操作
-
-- `POST /click-element` - 点击元素
-- `GET /element-info` - 获取元素信息
-
-### 图像操作
-
-- `POST /click-image` - 点击图片
-- `POST /find-image` - 查找图片
-
-### 其他操作
-
-- `POST /drag-to` - 拖拽操作
-- `POST /input-text` - 文本输入
-- `POST /hotkey` - 快捷键操作
-
-### 脚本管理
-
-- `GET /scripts` - 获取脚本列表
-- `POST /scripts` - 创建脚本
-- `PUT /scripts/{id}` - 更新脚本
-- `DELETE /scripts/{id}` - 删除脚本
-- `POST /scripts/{id}/run` - 运行脚本
-- `POST /scripts/import` - 导入脚本
-- `GET /scripts/{id}/export` - 导出脚本
+- 服务器管理
+  - `POST /api/server/start` 启动内置测试服务器（Body: `{ "port": 8888 }`）
+  - `POST /api/server/stop` 停止内置测试服务器
+  - `GET /api/server/status` 获取状态
+- 机器与应用
+  - `GET /api/machines` 获取机器列表与状态
+  - `POST /api/machine/connect` 连接指定机器（可选能力）
+  - `POST /api/machine/disconnect` 断开指定机器
+  - `GET /api/apps` 获取注册的应用列表与状态
+  - `POST /api/target/set` 设置当前机器与应用
+  - `GET /api/target/current` 获取当前目标
+- 元素与图片操作
+  - `POST /api/element/click` / `right-click` / `double-click`
+  - `POST /api/element/set-text` / `move-to`
+  - `POST /api/image/find` / `api/image/click`
+  - `GET /api/screenshot` 获取截图
+- 键盘/等待
+  - `POST /api/keyboard/hotkey` / `api/keyboard/type`
+  - `POST /api/wait/element` / `api/wait/image`
+- 脚本管理
+  - `GET /api/scripts` / `GET /api/scripts/{id}`
+  - `POST /api/scripts` / `PUT /api/scripts/{id}` / `DELETE /api/scripts/{id}`
+  - `POST /api/scripts/{id}/run`
 
 ## 使用示例
 
@@ -318,14 +243,21 @@ npm run dev
 ```bash
 cd backend
 pip install -r requirements.txt
-python main.py
+python -m uvicorn app:app --host 0.0.0.0 --port 8080 --reload
 ```
 
-### 测试服务器开发
+### 测试服务器/被测机独立运行（可选高级用法）
+
+后端已内置测试服务器，通常无需单独运行。
+如需独立部署测试服务器或做联调，可：
 
 ```bash
+# 独立启动测试服务器（不常用）
 cd communicators
-python test_communicator.py
+python test_communicator.py --host 0.0.0.0 --port 8888
+
+# 启动被测机客户端，指向服务器地址
+python tested_communicator.py --machine-id machine_001 --test-server <server_ip>:8888
 ```
 
 ### 被测试机器开发
@@ -335,83 +267,42 @@ cd communicators
 python tested_communicator.py --machine-id machine_001 --test-server 192.168.1.100:8889
 ```
 
-### API测试
+### API 测试
 
-```bash
-cd backend
-python test_api.py
-```
+推荐通过 Swagger 页面调试，或使用前端页面操作。
 
 ## 部署
 
-### 生产环境部署
-
-#### 前端部署
+### 前端（生产）
 
 ```bash
 cd frontend
 npm run build
-# 将dist目录部署到Web服务器
+# 将 dist 部署至 Web 服务器
 ```
 
-#### 后端部署
+### 后端（生产）
 
 ```bash
 cd backend
 pip install -r requirements.txt
-gunicorn main:app -w 4 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:8080
+python -m uvicorn app:app --host 0.0.0.0 --port 8080 --workers 4
 ```
 
-#### 测试服务器部署
+### 被测机客户端
 
 ```bash
 cd communicators
-python test_communicator.py --host 0.0.0.0 --port 8889
-```
-
-#### 被测试机器部署
-
-```bash
-cd communicators
-python tested_communicator.py --bind-host 0.0.0.0 --bind-port 8888 --test-server 192.168.1.100:8889 --machine-id machine_001
-```
-
-### Docker部署
-
-创建docker-compose.yml：
-
-```yaml
-version: '3.8'
-services:
-  frontend:
-    build: ./frontend
-    ports:
-      - "3000:3000"
-    depends_on:
-      - backend
-  
-  backend:
-    build: ./backend
-    ports:
-      - "8080:8080"
-    depends_on:
-      - test-server
-  
-  test-server:
-    build: ./communicators
-    ports:
-      - "8889:8889"
-    command: python test_communicator.py --host 0.0.0.0 --port 8889
+python tested_communicator.py --machine-id <id> --test-server <backend-ip>:8888
 ```
 
 ## 配置说明
 
 ### 端口配置
 
-- **测试服务器**: 8889 (默认)
-- **被测试机器**: 8888 (默认)
-- **后端API**: 8080 (默认)
-- **前端开发服务器**: 3000 (默认)
+- **内置测试服务器**: 8888（默认，后端内置）
+- **后端 API**: 8080（默认）
+- **前端开发服务器**: 3000（默认）
 
 ### 网络配置
 
@@ -426,61 +317,55 @@ services:
 1. **前端无法连接后端**
 
    - 检查后端服务是否启动
-   - 检查端口8080是否被占用
-   - 检查CORS配置
+   - 检查端口 8080 是否被占用
+   - 检查 CORS 配置
+2. **被测机未显示/无法操作**
 
-2. **后端无法连接测试服务器**
-
-   - 检查测试服务器是否启动
-   - 检查IP地址和端口是否正确
-   - 检查网络连接
-
+   - 确认后端内置测试服务器已运行（`/api/server/status`）
+   - 确认被测机客户端指向了正确地址 `<后端IP>:8888`
+   - 检查网络连接与防火墙
 3. **无法发现被测试机器**
 
-   - 检查被测试机器服务是否启动
-   - 检查被测试机器是否连接到测试服务器
-   - 检查网络连接和防火墙设置
-
+   - 检查被测机服务是否启动
+   - 检查被测机是否成功连接到测试服务器
+   - 检查网络与防火墙
 4. **操作执行失败**
 
-   - 确认已设置正确的目标机器和应用
-   - 检查元素路径是否正确
-   - 检查图片路径是否存在
-   - 查看后端日志获取详细错误信息
+   - 确认已设置正确的目标（机器/应用）
+   - 检查元素路径/图片路径
+   - 查看后端日志与返回错误信息
 
 ### 日志查看
 
 - **前端日志**: 浏览器开发者工具控制台
-- **后端日志**: backend/backend.log文件
-- **测试服务器日志**: 控制台输出
-- **被测试机器日志**: 控制台输出
+- **后端日志**: 控制台输出（或接入你自己的日志方案）
+- **被测机日志**: 控制台输出
 
 ## 架构优势
 
 ### 1. 多机器支持
+
 - 同时连接和管理多台被测试机器
 - 支持分布式测试环境
 - 机器状态实时监控
 
 ### 2. 多应用管理
+
 - 在每台机器上管理多个应用程序
 - 支持不同应用的自动化测试
 - 应用状态独立管理
 
 ### 3. 灵活目标设置
+
 - 动态选择操作目标
 - 支持快速切换测试环境
 - 操作前目标验证
 
 ### 4. 可扩展性
+
 - 支持水平扩展更多机器
 - 支持垂直扩展更多应用
 - 模块化架构设计
-
-### 5. 企业级特性
-- 集中化测试管理
-- 统一的操作接口
-- 完整的日志和监控
 
 ## 贡献指南
 
@@ -492,19 +377,18 @@ services:
 
 ## 许可证
 
-本项目采用MIT许可证。
+本项目采用 MIT 许可证。
 
 ## 联系方式
 
-如有问题或建议，请提交Issue或联系开发团队。
+如有问题或建议，请提交 Issue 或联系开发团队。
 
 ## 更新日志
 
-### v2.0.0 - 多机器多应用架构重构
-- 重构为多机器多应用连接架构
-- 新增测试服务器和被测试机器分离
+### v2.0.0 - 多机器多应用架构重构（当前）
+
+- 后端内置测试服务器运行模式（默认 8888）
 - 支持同时管理多台机器和多个应用
-- 重构前端界面，支持多机器多应用管理
-- 新增目标设置和状态监控功能
-- 优化API接口和错误处理
-- 增强用户体验和操作安全性
+- 前端支持多机器多应用管理与操作
+- 新增脚本管理与运行标记
+- 统一 API 前缀 `/api` 与错误返回结构
